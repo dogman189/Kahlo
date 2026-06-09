@@ -1,0 +1,596 @@
+import Foundation
+import Combine
+
+public struct Portfolio: Codable {
+    public var usd: Double
+    public var holdings: [String: Double]
+}
+
+public struct HistoryPoint: Codable, Identifiable {
+    public var id = UUID()
+    public var price: Double
+    public var sma: Double?
+    public var upper: Double?
+    public var lower: Double?
+    public var rsi: Double?
+    public var timestamp: String
+    public var trade: String? // "BUY", "SELL", "STOP_LOSS", "TAKE_PROFIT"
+}
+
+@MainActor
+public final class TradingEngine: ObservableObject {
+    // Basic settings
+    @Published public var isRunning: Bool = false
+    @Published public var symbol: String = "BTC"
+    @Published public var interval: Int = 10 // seconds for mobile testing, instead of 300
+    @Published public var tradeAmt: Double = 500.0
+    @Published public var apiKey: String = ""
+    @Published public var useSimulator: Bool = true // Simulator mode by default so users can run it instantly
+
+    // Market / Indicators state
+    @Published public var price: Double = 0.0
+    @Published public var sma: Double?
+    @Published public var upper: Double?
+    @Published public var lower: Double?
+    @Published public var rsi: Double?
+    @Published public var bandwidth: Double?
+
+    // Portfolio
+    @Published public var portfolio = Portfolio(usd: 10000.0, holdings: [:])
+    @Published public var startingWallet: Double = 10000.0
+    @Published public var avgBuyPrice: Double?
+
+    // Bot settings
+    @Published public var positionMode: String = "percent" // "percent" or "fixed"
+    @Published public var buyRiskPct: Double = 0.20
+    @Published public var stopLossPct: Double = 0.07
+    @Published public var takeProfitPct: Double = 0.10
+    @Published public var aiLearningRate: Double = 0.005
+    @Published public var bbWindow: Int = 20
+    @Published public var bbStdDev: Double = 2.0
+    @Published public var rsiPeriod: Int = 14
+    @Published public var rsiOversold: Double = 35
+    @Published public var rsiOverbought: Double = 65
+
+    // AI & Performance Stats
+    @Published public var totalTrades: Int = 0
+    @Published public var totalBuys: Int = 0
+    @Published public var totalSells: Int = 0
+    @Published public var stopLossesHit: Int = 0
+    @Published public var aiPrediction: Double = 0.0
+    @Published public var aiAccuracyScore: Double = 0.0
+    @Published public var nnTrainLoss: Double = 0.0
+    @Published public var nnLayerNorms: [Double] = []
+    @Published public var nnActivations: [[Double]] = []
+
+    // Historical tracking (max 50)
+    @Published public var history: [HistoryPoint] = []
+    @Published public var logs: [String] = []
+
+    // Prices queue
+    private var priceHistory: [Double] = []
+
+    // Neural Network
+    public var neuralNet: NeuralNetwork?
+    private var task: Task<Void, Never>?
+
+    // Constants
+    private let minBandwidth: Double = 0.0002
+    private let tradeCooldown: Int = 3
+    private var intervalCount: Int = 0
+    private var lastTradeInterval: Int = 0
+    private var wasBelowLower: Bool = false
+    private var wasAboveUpper: Bool = false
+    private var lastTickTrade: String?
+    
+    // Simulator helper state
+    private var simTrend: Double = 0.0
+    private var basePrice: Double = 60000.0
+
+    public init() {
+        // Load default config or saved values if preferred.
+        // For simplicity, we initialize with defaults.
+        loadConfig()
+    }
+
+    public func log(_ message: String) {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let timestamp = formatter.string(from: Date())
+        let entry = "[\(timestamp)] \(message)"
+        logs.append(entry)
+        if logs.count > 200 {
+            logs.removeFirst()
+        }
+        print(entry)
+    }
+
+    public func start() {
+        guard !isRunning else { return }
+        
+        // Save configurations to UserDefaults
+        saveConfig()
+
+        // Reset runtime values
+        intervalCount = 0
+        lastTradeInterval = 0
+        wasBelowLower = false
+        wasAboveUpper = false
+        avgBuyPrice = nil
+        totalTrades = 0
+        totalBuys = 0
+        totalSells = 0
+        stopLossesHit = 0
+        priceHistory.removeAll()
+        history.removeAll()
+        logs.removeAll()
+
+        portfolio = Portfolio(usd: startingWallet, holdings: [:])
+
+        log("System: Data stream initialized for \(symbol)")
+        let arch = [8, 16, 8, 4, 1]
+        neuralNet = NeuralNetwork(layerSizes: arch, learningRate: aiLearningRate)
+        log("System: Neural Network online — arch \(arch), lr=\(aiLearningRate)")
+
+        // Configure simulator base price according to symbol
+        switch symbol.uppercased() {
+        case "ETH":
+            basePrice = 3000.0
+        case "SOL":
+            basePrice = 150.0
+        default:
+            basePrice = 60000.0
+        }
+        simTrend = 0.0
+
+        isRunning = true
+
+        task = Task {
+            while isRunning {
+                await botTick()
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    public func stop() {
+        guard isRunning else { return }
+        isRunning = false
+        task?.cancel()
+        task = nil
+        log("System: Trading Bot stopped.")
+    }
+
+    private func botTick() async {
+        // Fetch or simulate price
+        guard let priceFetched = await fetchPrice() else {
+            stop()
+            return
+        }
+
+        self.price = priceFetched
+        priceHistory.append(priceFetched)
+        intervalCount += 1
+
+        let (smaComputed, upperComputed, lowerComputed) = computeBollinger()
+        let rsiComputed = computeRSI()
+        let bandwidthComputed = computeBandwidth(sma: smaComputed, upper: upperComputed, lower: lowerComputed)
+
+        self.sma = smaComputed
+        self.upper = upperComputed
+        self.lower = lowerComputed
+        self.rsi = rsiComputed
+        self.bandwidth = bandwidthComputed
+
+        guard let currentSma = smaComputed, let currentRsi = rsiComputed else {
+            let needed = max(bbWindow, rsiPeriod + 1) - priceHistory.count
+            log("Calibrating: $\(String(format: "%.2f", priceFetched)) — \(needed) more sample(s) needed")
+            saveHistoryPoint(price: priceFetched, sma: nil, upper: nil, lower: nil, rsi: nil)
+            return
+        }
+
+        // Feature engineering
+        let features = computeFeatures(price: priceFetched, sma: currentSma, upper: upperComputed ?? priceFetched, lower: lowerComputed ?? priceFetched, rsi: currentRsi, bandwidth: bandwidthComputed ?? 0.0)
+
+        // 1. Neural Network Training (online backpropagation)
+        if let nn = neuralNet, let lastPriceVal = nn.lastPrice {
+            let actualPct = ((priceFetched - lastPriceVal) / lastPriceVal) * 100.0
+            let predicted = nn.lastPrediction
+
+            nn.updateAccuracy(predicted: predicted, actual: actualPct)
+
+            // Clamp target to tanh output range [-1.0, 1.0] after scaling
+            let targetClamped = max(-1.0, min(1.0, actualPct * 10.0))
+            if let lastFeatures = nn.lastActivations?.first {
+                nn.train(inputs: lastFeatures, target: targetClamped)
+            }
+
+            self.aiAccuracyScore = nn.accuracy
+            self.nnTrainLoss = nn.trainLoss
+            self.nnLayerNorms = nn.getLayerNorms()
+            self.nnActivations = nn.lastActivations ?? []
+        }
+
+        // 2. Neural Network Prediction
+        var pred = 0.0
+        if let nn = neuralNet, let upperVal = upperComputed, let lowerVal = lowerComputed, (upperVal - lowerVal) != 0 {
+            pred = nn.predict(inputs: features)
+            nn.lastPrice = priceFetched
+            self.aiPrediction = pred
+            self.nnActivations = nn.lastActivations ?? []
+        } else {
+            self.aiPrediction = 0.0
+        }
+
+        let predStr = String(format: "%+.4f", pred)
+        log("Signal: $\(String(format: "%.2f", priceFetched)) | RSI=\(String(format: "%.1f", currentRsi)) | NN output: \(predStr) (Acc: \(String(format: "%.1f", aiAccuracyScore))%)")
+
+        // Trailing calculations / Cooldown & Risk
+        let intervalsSinceTrade = intervalCount - lastTradeInterval
+        let onCooldown = intervalsSinceTrade < tradeCooldown
+        let holdings = portfolio.holdings[symbol] ?? 0.0
+
+        // Stop-loss check
+        if let entry = avgBuyPrice, holdings > 0.0, priceFetched < entry * (1.0 - stopLossPct) {
+            if executeTrade(side: "SELL", price: priceFetched, reason: "stop-loss") {
+                stopLossesHit += 1
+                lastTradeInterval = intervalCount
+                wasAboveUpper = false
+                wasBelowLower = false
+            }
+            saveHistoryPoint(price: priceFetched, sma: smaComputed, upper: upperComputed, lower: lowerComputed, rsi: rsiComputed)
+            return
+        }
+
+        // Take-profit check
+        if let entry = avgBuyPrice, holdings > 0.0, priceFetched > entry * (1.0 + takeProfitPct) {
+            if executeTrade(side: "SELL", price: priceFetched, reason: "take-profit") {
+                lastTradeInterval = intervalCount
+                wasAboveUpper = false
+                wasBelowLower = false
+            }
+            saveHistoryPoint(price: priceFetched, sma: smaComputed, upper: upperComputed, lower: lowerComputed, rsi: rsiComputed)
+            return
+        }
+
+        // Bandwidth squeeze check
+        if let bwVal = bandwidthComputed, bwVal < minBandwidth {
+            saveHistoryPoint(price: priceFetched, sma: smaComputed, upper: upperComputed, lower: lowerComputed, rsi: rsiComputed)
+            return
+        }
+
+        // Band tracking
+        if let lowerVal = lowerComputed, priceFetched < lowerVal {
+            wasBelowLower = true
+        } else if let upperVal = upperComputed, priceFetched > upperVal {
+            wasAboveUpper = true
+        }
+        
+        // Buy Conditions
+        else if wasBelowLower, let lowerVal = lowerComputed, priceFetched >= lowerVal {
+            wasBelowLower = false
+            if onCooldown {
+                log("Risk: BUY skipped — cooldown")
+            } else if currentRsi > rsiOversold {
+                log("Filter: BUY skipped — RSI \(String(format: "%.1f", currentRsi)) not oversold")
+            } else if pred < 0.0 {
+                log("NN Filter: BUY vetoed — network predicts drop (\(predStr))")
+            } else {
+                if executeTrade(side: "BUY", price: priceFetched, reason: "BB re-entry + RSI + NN Appv") {
+                    lastTradeInterval = intervalCount
+                }
+            }
+        }
+
+        // Sell Conditions
+        else if wasAboveUpper, let upperVal = upperComputed, priceFetched <= upperVal {
+            wasAboveUpper = false
+            if onCooldown {
+                log("Risk: SELL skipped — cooldown")
+            } else if currentRsi < rsiOverbought {
+                log("Filter: SELL skipped — RSI \(String(format: "%.1f", currentRsi)) not overbought")
+            } else if pred > 0.0 {
+                log("NN Filter: SELL vetoed — network predicts pump (\(predStr))")
+            } else {
+                if executeTrade(side: "SELL", price: priceFetched, reason: "BB re-entry + RSI + NN Appv") {
+                    lastTradeInterval = intervalCount
+                }
+            }
+        }
+
+        saveHistoryPoint(price: priceFetched, sma: smaComputed, upper: upperComputed, lower: lowerComputed, rsi: rsiComputed)
+    }
+
+    private func executeTrade(side: String, price: Double, reason: String) -> Bool {
+        if side == "BUY" {
+            var tradeAmount = positionMode == "fixed" ? tradeAmt : portfolio.usd * buyRiskPct
+            if tradeAmount > portfolio.usd {
+                tradeAmount = portfolio.usd
+            }
+
+            if tradeAmount < 1.0 {
+                log("Risk: Skipped BUY — insufficient USD balance ($\(String(format: "%.2f", portfolio.usd)))")
+                return false
+            }
+
+            let bought = tradeAmount / price
+            portfolio.usd -= tradeAmount
+
+            let prevHoldings = portfolio.holdings[symbol] ?? 0.0
+            let prevAvg = avgBuyPrice ?? price
+            portfolio.holdings[symbol] = prevHoldings + bought
+
+            if prevHoldings > 0 {
+                avgBuyPrice = ((prevAvg * prevHoldings) + (price * bought)) / (prevHoldings + bought)
+            } else {
+                avgBuyPrice = price
+            }
+
+            totalTrades += 1
+            totalBuys += 1
+            lastTickTrade = "BUY"
+            log("Execution: Filled BUY \(String(format: "%.6f", bought)) \(symbol) @ $\(String(format: "%.2f", price)) | Risked: $\(String(format: "%.2f", tradeAmount)) | Reason: \(reason)")
+            return true
+        } else if side == "SELL" {
+            let owned = portfolio.holdings[symbol] ?? 0.0
+            if owned <= 0 {
+                log("Risk: Skipped SELL — no \(symbol) holdings")
+                return false
+            }
+
+            let sellPct = reason == "stop-loss" ? 1.0 : 0.50
+            let sellQty = owned * sellPct
+            let proceeds = sellQty * price
+            portfolio.usd += proceeds
+            portfolio.holdings[symbol] = owned - sellQty
+
+            var pnlStr = ""
+            if let entry = avgBuyPrice {
+                let pnl = ((price - entry) / entry) * 100.0
+                pnlStr = String(format: " | PnL: %+.2f%%", pnl)
+            }
+
+            if (portfolio.holdings[symbol] ?? 0.0) < 1e-8 {
+                portfolio.holdings[symbol] = 0.0
+                avgBuyPrice = nil
+            }
+
+            totalTrades += 1
+            totalSells += 1
+            lastTickTrade = reason == "stop-loss" ? "STOP_LOSS" : "SELL"
+            log("Execution: Filled SELL \(String(format: "%.6f", sellQty)) \(symbol) @ $\(String(format: "%.2f", price)) | Proceeds: $\(String(format: "%.2f", proceeds))\(pnlStr) | Reason: \(reason)")
+            return true
+        }
+
+        return false
+    }
+
+    private func saveHistoryPoint(price: Double, sma: Double?, upper: Double?, lower: Double?, rsi: Double?) {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let timestamp = formatter.string(from: Date())
+        let point = HistoryPoint(price: price, sma: sma, upper: upper, lower: lower, rsi: rsi, timestamp: timestamp, trade: lastTickTrade)
+        history.append(point)
+        if history.count > 50 {
+            history.removeFirst()
+        }
+        lastTickTrade = nil
+    }
+
+    // Indicator calculations
+    private func computeBollinger() -> (sma: Double?, upper: Double?, lower: Double?) {
+        guard priceHistory.count >= bbWindow else { return (nil, nil, nil) }
+        let window = Array(priceHistory.suffix(bbWindow))
+        let mean = window.reduce(0.0, +) / Double(bbWindow)
+        
+        let sumSquaredDiff = window.map { pow($0 - mean, 2) }.reduce(0.0, +)
+        let variance = sumSquaredDiff / Double(bbWindow - 1)
+        let stdDev = sqrt(variance)
+
+        return (mean, mean + (stdDev * bbStdDev), mean - (stdDev * bbStdDev))
+    }
+
+    private func computeRSI() -> Double? {
+        guard priceHistory.count >= rsiPeriod + 1 else { return nil }
+        let recent = Array(priceHistory.suffix(rsiPeriod + 1))
+        
+        var gains = 0.0
+        var losses = 0.0
+        
+        for i in 1..<recent.count {
+            let diff = recent[i] - recent[i-1]
+            if diff > 0 {
+                gains += diff
+            } else {
+                losses += abs(diff)
+            }
+        }
+        
+        let avgGain = gains / Double(rsiPeriod)
+        let avgLoss = max(losses / Double(rsiPeriod), 1e-9)
+        
+        let rs = avgGain / avgLoss
+        let computedRsi = 100.0 - (100.0 / (1.0 + rs))
+        return Double(round(100 * computedRsi) / 100)
+    }
+
+    private func computeBandwidth(sma: Double?, upper: Double?, lower: Double?) -> Double? {
+        guard let smaVal = sma, let upperVal = upper, let lowerVal = lower, smaVal != 0.0 else { return nil }
+        return (upperVal - lowerVal) / smaVal
+    }
+
+    private func computeFeatures(price: Double, sma: Double, upper: Double, lower: Double, rsi: Double, bandwidth: Double) -> [Double] {
+        var features = [Double](repeating: 0.0, count: 8)
+        let bbRange = max(upper - lower, 1.0)
+
+        // 0. RSI Normalized
+        features[0] = (rsi - 50.0) / 50.0
+
+        // 1. Bollinger Band position
+        features[1] = ((price - lower) / bbRange) - 0.5
+
+        // 2. Bandwidth (scaled)
+        features[2] = bandwidth * 100.0
+
+        // 3. 5-tick momentum
+        if priceHistory.count >= 6 {
+            let oldP = priceHistory[priceHistory.count - 6]
+            features[3] = oldP != 0.0 ? ((price - oldP) / oldP) * 100.0 : 0.0
+        }
+
+        // 4. Volatility (stddev of last 10 returns)
+        if priceHistory.count >= 11 {
+            var returns: [Double] = []
+            for i in stride(from: priceHistory.count - 10, to: priceHistory.count, by: 1) {
+                let pPrev = priceHistory[i - 1]
+                let pCurr = priceHistory[i]
+                if pPrev != 0.0 {
+                    returns.append(((pCurr - pPrev) / pPrev) * 100.0)
+                }
+            }
+            if returns.count >= 2 {
+                let mean = returns.reduce(0.0, +) / Double(returns.count)
+                let variance = returns.map { pow($0 - mean, 2) }.reduce(0.0, +) / Double(returns.count - 1)
+                features[4] = sqrt(variance)
+            } else if let first = returns.first {
+                features[4] = abs(first)
+            }
+        }
+
+        // 5. Price / SMA ratio deviation
+        features[5] = ((price - sma) / sma) * 100.0
+
+        // 6. Consecutive direction score
+        if priceHistory.count >= 4 {
+            var streak = 0.0
+            for i in stride(from: priceHistory.count - 1, through: priceHistory.count - 3, by: -1) {
+                if priceHistory[i] > priceHistory[i-1] {
+                    streak += 1.0
+                } else if priceHistory[i] < priceHistory[i-1] {
+                    streak -= 1.0
+                }
+            }
+            features[6] = streak / 3.0
+        }
+
+        // 7. Mean reversion intensity (z-score from SMA based on last 5 prices)
+        if priceHistory.count >= 5 {
+            let recent = Array(priceHistory.suffix(5))
+            let mean = recent.reduce(0.0, +) / Double(recent.count)
+            let variance = recent.map { pow($0 - mean, 2) }.reduce(0.0, +) / Double(recent.count - 1)
+            let std = variance > 0.0 ? sqrt(variance) : 1.0
+            features[7] = (price - sma) / std
+        }
+
+        return features
+    }
+
+    // Price Fetching / Simulation
+    private func fetchPrice() async -> Double? {
+        if useSimulator {
+            // Generate realistic mock market movement
+            // Random walk with mean reversion towards the base price + small momentum
+            let noise = Double.randomNormal(mean: 0.0, stdDev: basePrice * 0.003)
+            simTrend = (simTrend * 0.8) + Double.randomNormal(mean: 0.0, stdDev: basePrice * 0.0005)
+            let reversion = (basePrice - (price == 0.0 ? basePrice : price)) * 0.005
+            let newPrice = (price == 0.0 ? basePrice : price) + noise + simTrend + reversion
+            return max(newPrice, 1.0)
+        } else {
+            // CoinMarketCap Pro API call
+            guard !apiKey.isEmpty else {
+                log("Error: API Key is required when Simulator Mode is OFF")
+                return nil
+            }
+
+            let urlStr = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=\(symbol.uppercased())&convert=USD"
+            guard let url = URL(string: urlStr) else { return nil }
+
+            var request = URLRequest(url: url)
+            request.addValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
+            request.timeoutInterval = 10.0
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                    log("Error: Invalid response status from CMC API")
+                    return nil
+                }
+
+                // Decode simple JSON path: data[SYMBOL].quote.USD.price
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let dataDict = json["data"] as? [String: Any],
+                   let symDict = dataDict[symbol.uppercased()] as? [String: Any],
+                   let quoteDict = symDict["quote"] as? [String: Any],
+                   let usdDict = quoteDict["USD"] as? [String: Any],
+                   let priceVal = usdDict["price"] as? Double {
+                    return priceVal
+                } else {
+                    log("Error: Failed to parse price from CMC response")
+                    return nil
+                }
+            } catch {
+                log("Error: CMC fetch failed \(error.localizedDescription)")
+                return nil
+            }
+        }
+    }
+
+    // Persistence
+    private func saveConfig() {
+        let defaults = UserDefaults.standard
+        defaults.set(apiKey, forKey: "monet_api_key")
+        defaults.set(symbol, forKey: "monet_symbol")
+        defaults.set(interval, forKey: "monet_interval")
+        defaults.set(tradeAmt, forKey: "monet_trade_amt")
+        defaults.set(startingWallet, forKey: "monet_wallet")
+        defaults.set(positionMode, forKey: "monet_pos_mode")
+        defaults.set(buyRiskPct, forKey: "monet_risk_pct")
+        defaults.set(stopLossPct, forKey: "monet_stop_loss")
+        defaults.set(takeProfitPct, forKey: "monet_take_profit")
+        defaults.set(aiLearningRate, forKey: "monet_lr")
+        defaults.set(bbWindow, forKey: "monet_bb_window")
+        defaults.set(bbStdDev, forKey: "monet_bb_stddev")
+        defaults.set(rsiPeriod, forKey: "monet_rsi_period")
+        defaults.set(rsiOversold, forKey: "monet_rsi_oversold")
+        defaults.set(rsiOverbought, forKey: "monet_rsi_overbought")
+        defaults.set(useSimulator, forKey: "monet_use_simulator")
+    }
+
+    private func loadConfig() {
+        let defaults = UserDefaults.standard
+        apiKey = defaults.string(forKey: "monet_api_key") ?? ""
+        symbol = defaults.string(forKey: "monet_symbol") ?? "BTC"
+        interval = defaults.integer(forKey: "monet_interval")
+        if interval == 0 { interval = 10 }
+        tradeAmt = defaults.double(forKey: "monet_trade_amt")
+        if tradeAmt == 0.0 { tradeAmt = 500.0 }
+        startingWallet = defaults.double(forKey: "monet_wallet")
+        if startingWallet == 0.0 { startingWallet = 10000.0 }
+        positionMode = defaults.string(forKey: "monet_pos_mode") ?? "percent"
+        buyRiskPct = defaults.double(forKey: "monet_risk_pct")
+        if buyRiskPct == 0.0 { buyRiskPct = 0.20 }
+        stopLossPct = defaults.double(forKey: "monet_stop_loss")
+        if stopLossPct == 0.0 { stopLossPct = 0.07 }
+        takeProfitPct = defaults.double(forKey: "monet_take_profit")
+        if takeProfitPct == 0.0 { takeProfitPct = 0.10 }
+        aiLearningRate = defaults.double(forKey: "monet_lr")
+        if aiLearningRate == 0.0 { aiLearningRate = 0.005 }
+        bbWindow = defaults.integer(forKey: "monet_bb_window")
+        if bbWindow == 0 { bbWindow = 20 }
+        bbStdDev = defaults.double(forKey: "monet_bb_stddev")
+        if bbStdDev == 0.0 { bbStdDev = 2.0 }
+        rsiPeriod = defaults.integer(forKey: "monet_rsi_period")
+        if rsiPeriod == 0 { rsiPeriod = 14 }
+        rsiOversold = defaults.double(forKey: "monet_rsi_oversold")
+        if rsiOversold == 0.0 { rsiOversold = 35.0 }
+        rsiOverbought = defaults.double(forKey: "monet_rsi_overbought")
+        if rsiOverbought == 0.0 { rsiOverbought = 65.0 }
+        if defaults.object(forKey: "monet_use_simulator") != nil {
+            useSimulator = defaults.bool(forKey: "monet_use_simulator")
+        }
+    }
+}
