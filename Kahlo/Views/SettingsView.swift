@@ -2,11 +2,16 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var engine: TradingEngine
-    @Environment(\.colorScheme) var colorScheme
+    @AppStorage("isDarkMode") private var isDarkMode = true
     
     var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("Appearance")) {
+                    Toggle("Dark Mode", isOn: $isDarkMode)
+                        .tint(.cyan)
+                }
+                
                 Section(header: Text("API & Connectivity")) {
                     Toggle("Use Simulator (Mock Data)", isOn: $engine.useSimulator)
                         .tint(.purple)
@@ -151,7 +156,5 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(GlassBackgroundView())
         }
-        // Force dark mode to match the rest of the application
-        .preferredColorScheme(.dark)
     }
 }

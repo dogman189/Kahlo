@@ -489,6 +489,47 @@ public final class TradingEngine: ObservableObject {
         return features
     }
 
+    public func fetchMultiplePrices(symbols: [String]) async -> [String: (price: Double, change24h: Double, marketCap: Double, volume24h: Double)]? {
+        if apiKey.isEmpty {
+            return nil
+        }
+        
+        let symbolList = symbols.map { $0.uppercased() }.joined(separator: ",")
+        let urlStr = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=\(symbolList)&convert=USD"
+        guard let url = URL(string: urlStr) else { return nil }
+        
+        var request = URLRequest(url: url)
+        request.addValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
+        request.timeoutInterval = 10.0
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return nil
+            }
+            
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let dataDict = json["data"] as? [String: Any] {
+                var result: [String: (price: Double, change24h: Double, marketCap: Double, volume24h: Double)] = [:]
+                for sym in symbols {
+                    if let symDict = dataDict[sym.uppercased()] as? [String: Any],
+                       let quoteDict = symDict["quote"] as? [String: Any],
+                       let usdDict = quoteDict["USD"] as? [String: Any],
+                       let priceVal = usdDict["price"] as? Double,
+                       let changeVal = usdDict["percent_change_24h"] as? Double,
+                       let capVal = usdDict["market_cap"] as? Double,
+                       let volVal = usdDict["volume_24h"] as? Double {
+                        result[sym.uppercased()] = (priceVal, changeVal, capVal / 1_000_000_000.0, volVal / 1_000_000.0)
+                    }
+                }
+                return result
+            }
+        } catch {
+            print("Error fetching multiple prices: \(error.localizedDescription)")
+        }
+        return nil
+    }
+
     // Price Fetching / Simulation
     private func fetchPrice() async -> Double? {
         if useSimulator {

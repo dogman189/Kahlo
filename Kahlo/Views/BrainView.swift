@@ -11,7 +11,7 @@ struct BrainView: View {
                     Text("AI BRAIN & FORECAST")
                         .font(.system(.title2, design: .rounded))
                         .bold()
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     Spacer()
                     
                     Text("v4.0")
@@ -53,7 +53,7 @@ struct BrainView: View {
                         
                         Text(String(format: "%.1f%%", engine.aiAccuracyScore))
                             .font(.system(size: 28, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                         
                         Text("Loss: \(String(format: "%.6f", engine.nnTrainLoss))")
                             .font(.system(size: 10, design: .monospaced))

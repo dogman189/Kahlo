@@ -5,6 +5,9 @@ struct NeuralNetworkView: View {
     let activations: [[Double]]
     let layerNorms: [Double]
     let featureNames: [String] = ["RSI", "BB Pos", "Bandwidth", "Momentum", "Volatility", "P/SMA", "ConsecDir", "MeanRev"]
+    
+    @State private var phase: CGFloat = 0
+    @State private var pulse: Bool = false
 
     var body: some View {
         GeometryReader { geo in
@@ -14,7 +17,7 @@ struct NeuralNetworkView: View {
             ZStack {
                 // Connections (Weights)
                 ForEach(0..<(layersCount - 1), id: \.self) { layerIdx in
-                    let fromCount = min(architecture[layerIdx], 8) // Limit rendered nodes to prevent clutter
+                    let fromCount = min(architecture[layerIdx], 8)
                     let toCount = min(architecture[layerIdx + 1], 8)
                     
                     let fromColX = CGFloat(layerIdx) * colWidth + (colWidth / 2.0)
@@ -32,6 +35,7 @@ struct NeuralNetworkView: View {
                                 path.move(to: CGPoint(x: fromColX, y: fromY))
                                 path.addLine(to: CGPoint(x: toColX, y: toY))
                             }
+                            .trim(from: 0, to: pulse ? 1.0 : 0.0)
                             .stroke(
                                 Color.purple.opacity(0.12),
                                 lineWidth: 0.8
@@ -51,17 +55,19 @@ struct NeuralNetworkView: View {
                     ForEach(0..<nodesCount, id: \.self) { nodeIdx in
                         let nodeY = CGFloat(nodeIdx + 1) * nodeHeight
                         
-                        // Compute activation value for styling
                         let activationVal = (layerIdx < activations.count && nodeIdx < activations[layerIdx].count) ? activations[layerIdx][nodeIdx] : 0.0
                         
                         VStack(spacing: 2) {
                             Circle()
                                 .fill(nodeColor(val: activationVal, isInput: isInput, isOutput: isOutput))
                                 .frame(width: isOutput ? 22 : 14, height: isOutput ? 22 : 14)
+                                .scaleEffect(pulse ? 1.0 : 0.8)
                                 .overlay(
                                     Circle().stroke(Color.white.opacity(0.8), lineWidth: 1)
+                                        .scaleEffect(pulse ? 1.1 : 1.0)
+                                        .opacity(pulse ? 0.2 : 0.8)
                                 )
-                                .shadow(color: isOutput ? Color.cyan.opacity(0.8) : Color.purple.opacity(0.4), radius: 3)
+                                .shadow(color: (isOutput ? Color.cyan : Color.purple).opacity(pulse ? 0.6 : 0.1), radius: pulse ? 6 : 2)
                             
                             if isInput && nodeIdx < featureNames.count {
                                 Text(featureNames[nodeIdx])
@@ -74,6 +80,11 @@ struct NeuralNetworkView: View {
                 }
             }
         }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                pulse.toggle()
+            }
+        }
     }
     
     private func nodeColor(val: Double, isInput: Bool, isOutput: Bool) -> Color {
@@ -81,12 +92,11 @@ struct NeuralNetworkView: View {
             return val > 0.05 ? .green : (val < -0.05 ? .red : .gray)
         }
         
-        // Hidden activations are ReLU (positive)
         if isInput {
-            // Normalized inputs are [-1.0, 1.0]
             return val > 0.0 ? Color.cyan.opacity(0.4 + val * 0.6) : Color.blue.opacity(0.4 + abs(val) * 0.6)
         } else {
             return Color.purple.opacity(0.3 + min(val, 1.0) * 0.7)
         }
     }
 }
+

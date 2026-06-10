@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MonitorView: View {
     @ObservedObject var engine: TradingEngine
-    @State private var priceColor: Color = .white
+    @State private var priceColor: Color = .primary
     
     var body: some View {
         ScrollView {
@@ -13,7 +13,7 @@ struct MonitorView: View {
                         Text("MONÉT TRADING BOT")
                             .font(.system(.title2, design: .rounded))
                             .bold()
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                         Text(engine.symbol + " / USD")
                             .font(.system(.subheadline, design: .monospaced))
                             .foregroundColor(.gray)
@@ -22,9 +22,13 @@ struct MonitorView: View {
                     
                     // Status Pill
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(engine.isRunning ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
+                        if engine.isRunning {
+                            PulsingDot(color: .green)
+                        } else {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 8, height: 8)
+                        }
                         Text(engine.isRunning ? "RUNNING" : "STOPPED")
                             .font(.system(.caption, design: .monospaced))
                             .bold()
@@ -71,7 +75,9 @@ struct MonitorView: View {
                         // Action buttons
                         if !engine.isRunning {
                             Button(action: {
-                                engine.start()
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    engine.start()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "play.fill")
@@ -85,9 +91,12 @@ struct MonitorView: View {
                                 .background(Color.green)
                                 .cornerRadius(12)
                             }
+                            .buttonStyle(ScaleButtonStyle())
                         } else {
                             Button(action: {
-                                engine.stop()
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    engine.stop()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "stop.fill")
@@ -101,6 +110,7 @@ struct MonitorView: View {
                                 .background(Color.red)
                                 .cornerRadius(12)
                             }
+                            .buttonStyle(ScaleButtonStyle())
                         }
                     }
                     
@@ -171,6 +181,7 @@ struct MonitorView: View {
                                         .frame(width: 14, height: 14)
                                         .offset(x: meterGeo.size.width * CGFloat(pct) - 7, y: -3)
                                         .shadow(color: .purple, radius: 2)
+                                        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: pct)
                                 }
                             }
                         }
@@ -208,6 +219,7 @@ struct MonitorView: View {
                                         RoundedRectangle(cornerRadius: 3)
                                             .fill(rsiColor(r))
                                             .frame(width: progressGeo.size.width * CGFloat(r / 100.0), height: 6)
+                                            .animation(.spring(response: 0.4, dampingFraction: 0.75), value: r)
                                     }
                                 }
                             }
@@ -220,14 +232,14 @@ struct MonitorView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Bollinger Bandwidth")
                                 .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.secondary)
                             
                             HStack(spacing: 8) {
                                 if let bw = engine.bandwidth {
                                     Text(String(format: "%.5f", bw))
                                         .font(.system(.subheadline, design: .monospaced))
                                         .bold()
-                                        .foregroundColor(.white)
+                                        .foregroundColor(.primary)
                                     
                                     if bw < 0.0002 {
                                         Text("SQUEEZE")
@@ -264,26 +276,37 @@ struct MonitorView: View {
                             .foregroundColor(.gray)
                     }
                     
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if engine.logs.isEmpty {
-                                Text("[System] Idle. Click Start to initialize feed.")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.gray)
-                            } else {
-                                ForEach(engine.logs, id: \.self) { log in
-                                    Text(log)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if engine.logs.isEmpty {
+                                    Text("[System] Idle. Click Start to initialize feed.")
                                         .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(logColor(log))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .foregroundColor(.gray)
+                                } else {
+                                    ForEach(Array(engine.logs.enumerated()), id: \.offset) { index, log in
+                                        Text(log)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundColor(logColor(log))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .id(index)
+                                            .transition(.move(edge: .leading).combined(with: .opacity))
+                                    }
+                                }
+                            }
+                            .onChange(of: engine.logs.count) { _, newCount in
+                                if let lastIndex = engine.logs.indices.last {
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo(lastIndex, anchor: .bottom)
+                                    }
                                 }
                             }
                         }
+                        .frame(height: 140)
+                        .padding(10)
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(8)
                     }
-                    .frame(height: 140)
-                    .padding(10)
-                    .background(Color.black.opacity(0.5))
-                    .cornerRadius(8)
                 }
                 .padding()
                 .glassPanel()
@@ -313,5 +336,28 @@ struct MonitorView: View {
             return .yellow
         }
         return .white.opacity(0.85)
+    }
+}
+
+// MARK: - Pulsing Status Dot View
+struct PulsingDot: View {
+    let color: Color
+    @State private var isAnimating = false
+    
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .overlay(
+                Circle()
+                    .stroke(color, lineWidth: 1.5)
+                    .scaleEffect(isAnimating ? 2.5 : 1.0)
+                    .opacity(isAnimating ? 0.0 : 0.8)
+            )
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                    isAnimating = true
+                }
+            }
     }
 }

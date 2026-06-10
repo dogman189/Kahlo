@@ -3,6 +3,18 @@ import SwiftUI
 struct PortfolioView: View {
     @ObservedObject var engine: TradingEngine
     
+    private var netWorth: Double {
+        engine.portfolio.usd + ((engine.portfolio.holdings[engine.symbol] ?? 0.0) * (engine.price > 0 ? engine.price : 0.0))
+    }
+    
+    private var pnlUsd: Double {
+        netWorth - engine.startingWallet
+    }
+    
+    private var pnlPct: Double {
+        engine.startingWallet > 0 ? (pnlUsd / engine.startingWallet) * 100.0 : 0.0
+    }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -10,15 +22,10 @@ struct PortfolioView: View {
                     Text("PORTFOLIO")
                         .font(.system(.title2, design: .rounded))
                         .bold()
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     Spacer()
                 }
                 .padding(.top, 10)
-                
-                // Net Worth & PnL
-                let netWorth = engine.portfolio.usd + ((engine.portfolio.holdings[engine.symbol] ?? 0.0) * (engine.price > 0 ? engine.price : 0.0))
-                let pnlUsd = netWorth - engine.startingWallet
-                let pnlPct = engine.startingWallet > 0 ? (pnlUsd / engine.startingWallet) * 100.0 : 0.0
                 
                 VStack(spacing: 16) {
                     Text("Total Net Worth")
@@ -27,7 +34,7 @@ struct PortfolioView: View {
                     
                     Text("$\(String(format: "%.2f", netWorth))")
                         .font(.system(size: 46, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     
                     HStack(spacing: 8) {
                         Image(systemName: pnlUsd >= 0 ? "arrow.up.right" : "arrow.down.right")
@@ -58,7 +65,7 @@ struct PortfolioView: View {
                         }
                         Text("$\(String(format: "%.2f", engine.portfolio.usd))")
                             .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,7 +83,7 @@ struct PortfolioView: View {
                         let holdings = engine.portfolio.holdings[engine.symbol] ?? 0.0
                         Text("\(String(format: "%.6f", holdings))")
                             .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,6 +124,8 @@ struct PortfolioView: View {
                 .glassPanel()
             }
             .padding(.horizontal)
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: netWorth)
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: engine.totalTrades)
         }
         .background(GlassBackgroundView())
     }
