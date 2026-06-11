@@ -4,7 +4,12 @@ struct PortfolioView: View {
     @ObservedObject var engine: TradingEngine
     
     private var netWorth: Double {
-        engine.portfolio.usd + ((engine.portfolio.holdings[engine.symbol] ?? 0.0) * (engine.price > 0 ? engine.price : 0.0))
+        var total = engine.portfolio.usd
+        for (sym, qty) in engine.portfolio.holdings {
+            let price = engine.priceForSymbol(sym)
+            total += qty * (price > 0 ? price : 0.0)
+        }
+        return total
     }
     
     private var pnlUsd: Double {

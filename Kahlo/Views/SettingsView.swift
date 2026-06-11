@@ -150,6 +150,18 @@ struct SettingsView: View {
                             .frame(width: 80)
                     }
                 }
+
+                Section(header: Text("Reset Data")) {
+                    Button(role: .destructive) {
+                        engine.resetPortfolio()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Reset Portfolio & Stats")
+                            Spacer()
+                        }
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

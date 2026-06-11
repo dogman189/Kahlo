@@ -102,6 +102,9 @@ public final class TradingEngine: ObservableObject {
     /// Runs continuously regardless of which tab is active.
     private func startMarketRefreshTimer() {
         marketRefreshTimer?.invalidate()
+        Task { @MainActor in
+            await self.refreshMarketData()
+        }
         marketRefreshTimer = Timer.scheduledTimer(withTimeInterval: 61.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
@@ -139,21 +142,15 @@ public final class TradingEngine: ObservableObject {
         lastTradeInterval = 0
         wasBelowLower = false
         wasAboveUpper = false
-        avgBuyPrice = nil
-        totalTrades = 0
-        totalBuys = 0
-        totalSells = 0
-        stopLossesHit = 0
         priceHistory.removeAll()
         history.removeAll()
         logs.removeAll()
-
-        portfolio = Portfolio(usd: startingWallet, holdings: [:])
 
         log("System: Data stream initialized for \(symbol)")
         let arch = [8, 16, 8, 4, 1]
         neuralNet = NeuralNetwork(layerSizes: arch, learningRate: aiLearningRate)
         log("System: Neural Network online — arch \(arch), lr=\(aiLearningRate)")
+
 
         // Configure simulator base price according to symbol
         switch symbol.uppercased() {
@@ -253,6 +250,7 @@ public final class TradingEngine: ObservableObject {
         let msg = "Manual BUY: \(String(format: "%.6f", qty)) \(targetSymbol) @ $\(String(format: "%.2f", currentPrice)) for $\(String(format: "%.2f", usdAmount))"
         log("Execution: \(msg)")
         NotificationManager.shared.sendTradeNotification(side: "BUY", symbol: targetSymbol, price: currentPrice, amount: qty)
+        saveConfig()
         return msg
     }
 
@@ -294,6 +292,7 @@ public final class TradingEngine: ObservableObject {
         let msg = "Manual SELL: \(String(format: "%.6f", quantity)) \(targetSymbol) @ $\(String(format: "%.2f", currentPrice)) for $\(String(format: "%.2f", proceeds))\(pnlStr)"
         log("Execution: \(msg)")
         NotificationManager.shared.sendTradeNotification(side: "SELL", symbol: targetSymbol, price: currentPrice, amount: quantity)
+        saveConfig()
         return msg
     }
 
@@ -317,6 +316,19 @@ public final class TradingEngine: ObservableObject {
         saveConfig()
         log("System: Manually added $\(String(format: "%.2f", usdAmount)) USD to portfolio.")
     }
+
+    /// Resets the portfolio and trading stats to startingWallet and zero holdings/stats.
+    public func resetPortfolio() {
+        portfolio = Portfolio(usd: startingWallet, holdings: [:])
+        avgBuyPrice = nil
+        totalTrades = 0
+        totalBuys = 0
+        totalSells = 0
+        stopLossesHit = 0
+        saveConfig()
+        log("System: Portfolio and trade statistics manually reset.")
+    }
+
 
     /// Returns the current price for a symbol.  Uses the live engine price
     /// if the symbol matches, otherwise returns a rough default (useful for
@@ -508,6 +520,7 @@ public final class TradingEngine: ObservableObject {
             log("Execution: Filled BUY \(String(format: "%.6f", bought)) \(symbol) @ $\(String(format: "%.2f", price)) | Risked: $\(String(format: "%.2f", tradeAmount)) | Reason: \(reason)")
             // Notify user about the trade (useful when app is in background)
             NotificationManager.shared.sendTradeNotification(side: "BUY", symbol: symbol, price: price, amount: bought)
+            saveConfig()
             return true
         } else if side == "SELL" {
             let owned = portfolio.holdings[symbol] ?? 0.0
@@ -544,6 +557,7 @@ public final class TradingEngine: ObservableObject {
             } else {
                 NotificationManager.shared.sendTradeNotification(side: "SELL", symbol: symbol, price: price, amount: sellQty)
             }
+            saveConfig()
             return true
         }
 
@@ -784,6 +798,22 @@ public final class TradingEngine: ObservableObject {
         defaults.set(rsiOversold, forKey: "monet_rsi_oversold")
         defaults.set(rsiOverbought, forKey: "monet_rsi_overbought")
         defaults.set(useSimulator, forKey: "monet_use_simulator")
+
+        // Save portfolio
+        if let encodedPortfolio = try? JSONEncoder().encode(portfolio) {
+            defaults.set(encodedPortfolio, forKey: "monet_portfolio")
+        }
+        // Save avgBuyPrice
+        if let avgBuyPrice = avgBuyPrice {
+            defaults.set(avgBuyPrice, forKey: "monet_avg_buy_price")
+        } else {
+            defaults.removeObject(forKey: "monet_avg_buy_price")
+        }
+        // Save trade stats
+        defaults.set(totalTrades, forKey: "monet_total_trades")
+        defaults.set(totalBuys, forKey: "monet_total_buys")
+        defaults.set(totalSells, forKey: "monet_total_sells")
+        defaults.set(stopLossesHit, forKey: "monet_stop_losses_hit")
     }
 
     private func loadConfig() {
@@ -796,6 +826,28 @@ public final class TradingEngine: ObservableObject {
         if tradeAmt == 0.0 { tradeAmt = 500.0 }
         startingWallet = defaults.double(forKey: "monet_wallet")
         if startingWallet == 0.0 { startingWallet = 10000.0 }
+        
+        // Load portfolio
+        if let savedPortfolioData = defaults.data(forKey: "monet_portfolio"),
+           let decodedPortfolio = try? JSONDecoder().decode(Portfolio.self, from: savedPortfolioData) {
+            portfolio = decodedPortfolio
+        } else {
+            portfolio = Portfolio(usd: startingWallet, holdings: [:])
+        }
+
+        // Load avgBuyPrice
+        if defaults.object(forKey: "monet_avg_buy_price") != nil {
+            avgBuyPrice = defaults.double(forKey: "monet_avg_buy_price")
+        } else {
+            avgBuyPrice = nil
+        }
+
+        // Load stats
+        totalTrades = defaults.integer(forKey: "monet_total_trades")
+        totalBuys = defaults.integer(forKey: "monet_total_buys")
+        totalSells = defaults.integer(forKey: "monet_total_sells")
+        stopLossesHit = defaults.integer(forKey: "monet_stop_losses_hit")
+
         positionMode = defaults.string(forKey: "monet_pos_mode") ?? "percent"
         buyRiskPct = defaults.double(forKey: "monet_risk_pct")
         if buyRiskPct == 0.0 { buyRiskPct = 0.20 }
