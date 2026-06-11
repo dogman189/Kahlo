@@ -18,6 +18,8 @@ public final class NotificationManager {
         }
     }
     
+    // MARK: - Background Running Notification
+
     public func sendAlgoRunningInBackgroundNotification(symbol: String) {
         let content = UNMutableNotificationContent()
         content.title = "Kahlo Algo Running"
@@ -40,6 +42,61 @@ public final class NotificationManager {
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 print("Error posting notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Trade Execution Notifications
+
+    /// Send an alert when a BUY trade fires in the background.
+    public func sendTradeNotification(side: String, symbol: String, price: Double, amount: Double) {
+        let content = UNMutableNotificationContent()
+        let emoji = side == "BUY" ? "🟢" : "🔴"
+        content.title = "\(emoji) Kahlo: \(side) \(symbol)"
+        content.body = String(
+            format: "%@ %.6f %@ @ $%.2f",
+            side == "BUY" ? "Bought" : "Sold",
+            amount,
+            symbol,
+            price
+        )
+        content.sound = .default
+        // Show the current price as the subtitle
+        content.subtitle = String(format: "Price: $%.2f", price)
+
+        let identifier = "KahloTrade-\(UUID().uuidString)"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error posting trade notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Send an alert for stop-loss or take-profit events.
+    public func sendRiskNotification(event: String, symbol: String, price: Double, pnl: Double) {
+        let content = UNMutableNotificationContent()
+        let emoji = event == "stop-loss" ? "⛔️" : "✅"
+        let eventTitle = event == "stop-loss" ? "Stop-Loss Hit" : "Take-Profit Hit"
+        content.title = "\(emoji) Kahlo: \(eventTitle)"
+        content.body = String(
+            format: "%@ triggered for %@ @ $%.2f | PnL: %+.2f%%",
+            eventTitle,
+            symbol,
+            price,
+            pnl
+        )
+        content.sound = .defaultCritical
+
+        let identifier = "KahloRisk-\(UUID().uuidString)"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error posting risk notification: \(error.localizedDescription)")
             }
         }
     }

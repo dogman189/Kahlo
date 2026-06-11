@@ -26,6 +26,7 @@ public final class TradingEngine: ObservableObject {
     @Published public var tradeAmt: Double = 500.0
     @Published public var apiKey: String = ""
     @Published public var useSimulator: Bool = true // Simulator mode by default so users can run it instantly
+    @Published public var cachedPrices: [String: Double] = [:]
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
@@ -163,6 +164,146 @@ public final class TradingEngine: ObservableObject {
         task?.cancel()
         task = nil
         log("System: Trading Bot stopped.")
+    }
+
+    // MARK: - Background Execution
+
+    /// Public wrapper around botTick so BackgroundTaskManager can call it
+    /// from a BGTask handler.  Marked nonisolated so it can be called from
+    /// any context; it immediately hops to MainActor via the await chain.
+    public func botTickBackground() async {
+        await botTick()
+    }
+
+    /// Called by ContentView when the app enters the background.
+    public func handleDidEnterBackground() {
+        guard isRunning else { return }
+        BackgroundTaskManager.shared.beginUIBackgroundTask()
+        BackgroundTaskManager.shared.scheduleAppRefresh()
+        BackgroundTaskManager.shared.scheduleProcessingTask()
+        log("System: Background execution scheduled — bot will continue running.")
+        NotificationManager.shared.sendAlgoRunningInBackgroundNotification(symbol: symbol)
+    }
+
+    /// Called by ContentView when the app returns to the foreground.
+    public func handleWillEnterForeground() {
+        BackgroundTaskManager.shared.endUIBackgroundTask()
+        log("System: App returned to foreground — background tasks released.")
+    }
+
+    // MARK: - Manual Trading
+
+    /// Manually buy `symbol` using `usdAmount` of USD at the current price.
+    /// Returns a human-readable result string.
+    @discardableResult
+    public func manualBuy(symbol targetSymbol: String, usdAmount: Double) -> String {
+        let currentPrice = priceForSymbol(targetSymbol)
+        guard currentPrice > 0 else {
+            let msg = "Manual BUY failed — no price available for \(targetSymbol)."
+            log(msg)
+            return msg
+        }
+        guard usdAmount > 0, usdAmount <= portfolio.usd else {
+            let msg = "Manual BUY failed — invalid amount ($\(String(format: "%.2f", usdAmount))) or insufficient balance ($\(String(format: "%.2f", portfolio.usd)))."
+            log(msg)
+            return msg
+        }
+
+        let qty = usdAmount / currentPrice
+        portfolio.usd -= usdAmount
+
+        let prev = portfolio.holdings[targetSymbol] ?? 0.0
+        portfolio.holdings[targetSymbol] = prev + qty
+
+        // Update average buy price for the active symbol
+        if targetSymbol == symbol {
+            let prevAvg = avgBuyPrice ?? currentPrice
+            if prev > 0 {
+                avgBuyPrice = ((prevAvg * prev) + (currentPrice * qty)) / (prev + qty)
+            } else {
+                avgBuyPrice = currentPrice
+            }
+        }
+
+        totalTrades += 1
+        totalBuys += 1
+
+        let msg = "Manual BUY: \(String(format: "%.6f", qty)) \(targetSymbol) @ $\(String(format: "%.2f", currentPrice)) for $\(String(format: "%.2f", usdAmount))"
+        log("Execution: \(msg)")
+        NotificationManager.shared.sendTradeNotification(side: "BUY", symbol: targetSymbol, price: currentPrice, amount: qty)
+        return msg
+    }
+
+    /// Manually sell `quantity` of `symbol` at the current price.
+    /// Returns a human-readable result string.
+    @discardableResult
+    public func manualSell(symbol targetSymbol: String, quantity: Double) -> String {
+        let currentPrice = priceForSymbol(targetSymbol)
+        guard currentPrice > 0 else {
+            let msg = "Manual SELL failed — no price available for \(targetSymbol)."
+            log(msg)
+            return msg
+        }
+        let owned = portfolio.holdings[targetSymbol] ?? 0.0
+        guard quantity > 0, quantity <= owned else {
+            let msg = "Manual SELL failed — invalid quantity (\(String(format: "%.6f", quantity))) or insufficient holdings (\(String(format: "%.6f", owned)))."
+            log(msg)
+            return msg
+        }
+
+        let proceeds = quantity * currentPrice
+        portfolio.usd += proceeds
+        portfolio.holdings[targetSymbol] = owned - quantity
+
+        var pnlStr = ""
+        if targetSymbol == symbol, let entry = avgBuyPrice {
+            let pnl = ((currentPrice - entry) / entry) * 100.0
+            pnlStr = " | PnL: \(String(format: "%+.2f", pnl))%"
+        }
+
+        if (portfolio.holdings[targetSymbol] ?? 0.0) < 1e-8 {
+            portfolio.holdings[targetSymbol] = 0.0
+            if targetSymbol == symbol { avgBuyPrice = nil }
+        }
+
+        totalTrades += 1
+        totalSells += 1
+
+        let msg = "Manual SELL: \(String(format: "%.6f", quantity)) \(targetSymbol) @ $\(String(format: "%.2f", currentPrice)) for $\(String(format: "%.2f", proceeds))\(pnlStr)"
+        log("Execution: \(msg)")
+        NotificationManager.shared.sendTradeNotification(side: "SELL", symbol: targetSymbol, price: currentPrice, amount: quantity)
+        return msg
+    }
+
+    /// Manually sell ALL holdings of `symbol` at the current price.
+    @discardableResult
+    public func manualSellAll(symbol targetSymbol: String) -> String {
+        let owned = portfolio.holdings[targetSymbol] ?? 0.0
+        guard owned > 0 else {
+            let msg = "Manual SELL ALL failed — no \(targetSymbol) holdings."
+            log(msg)
+            return msg
+        }
+        return manualSell(symbol: targetSymbol, quantity: owned)
+    }
+
+    /// Returns the current price for a symbol.  Uses the live engine price
+    /// if the symbol matches, otherwise returns a rough default (useful for
+    /// multi-coin manual trading when the engine is watching one symbol).
+    public func priceForSymbol(_ sym: String) -> Double {
+        let cleanSym = sym.uppercased()
+        if cleanSym == symbol.uppercased() && price > 0 {
+            return price
+        }
+        if let cached = cachedPrices[cleanSym] {
+            return cached
+        }
+        // Fallback prices for symbols not actively tracked by the engine.
+        let fallbacks: [String: Double] = [
+            "BTC": 68450.0, "ETH": 3520.0, "SOL": 162.50,
+            "ADA": 0.485, "DOT": 6.42, "LINK": 15.35, "DOGE": 0.142
+        ]
+        return fallbacks[cleanSym] ?? 0.0
     }
 
     private func botTick() async {
@@ -334,6 +475,8 @@ public final class TradingEngine: ObservableObject {
             totalBuys += 1
             lastTickTrade = "BUY"
             log("Execution: Filled BUY \(String(format: "%.6f", bought)) \(symbol) @ $\(String(format: "%.2f", price)) | Risked: $\(String(format: "%.2f", tradeAmount)) | Reason: \(reason)")
+            // Notify user about the trade (useful when app is in background)
+            NotificationManager.shared.sendTradeNotification(side: "BUY", symbol: symbol, price: price, amount: bought)
             return true
         } else if side == "SELL" {
             let owned = portfolio.holdings[symbol] ?? 0.0
@@ -363,6 +506,13 @@ public final class TradingEngine: ObservableObject {
             totalSells += 1
             lastTickTrade = reason == "stop-loss" ? "STOP_LOSS" : "SELL"
             log("Execution: Filled SELL \(String(format: "%.6f", sellQty)) \(symbol) @ $\(String(format: "%.2f", price)) | Proceeds: $\(String(format: "%.2f", proceeds))\(pnlStr) | Reason: \(reason)")
+            // Notify user about the trade (useful when app is in background)
+            if reason == "stop-loss" || reason == "take-profit" {
+                let pnlVal = avgBuyPrice.map { ((price - $0) / $0) * 100.0 } ?? 0.0
+                NotificationManager.shared.sendRiskNotification(event: reason, symbol: symbol, price: price, pnl: pnlVal)
+            } else {
+                NotificationManager.shared.sendTradeNotification(side: "SELL", symbol: symbol, price: price, amount: sellQty)
+            }
             return true
         }
 
@@ -512,14 +662,18 @@ public final class TradingEngine: ObservableObject {
                let dataDict = json["data"] as? [String: Any] {
                 var result: [String: (price: Double, change24h: Double, marketCap: Double, volume24h: Double)] = [:]
                 for sym in symbols {
-                    if let symDict = dataDict[sym.uppercased()] as? [String: Any],
+                    let upperSym = sym.uppercased()
+                    if let symDict = dataDict[upperSym] as? [String: Any],
                        let quoteDict = symDict["quote"] as? [String: Any],
                        let usdDict = quoteDict["USD"] as? [String: Any],
                        let priceVal = usdDict["price"] as? Double,
                        let changeVal = usdDict["percent_change_24h"] as? Double,
                        let capVal = usdDict["market_cap"] as? Double,
                        let volVal = usdDict["volume_24h"] as? Double {
-                        result[sym.uppercased()] = (priceVal, changeVal, capVal / 1_000_000_000.0, volVal / 1_000_000.0)
+                        result[upperSym] = (priceVal, changeVal, capVal / 1_000_000_000.0, volVal / 1_000_000.0)
+                        
+                        // Cache the price in our published dict
+                        self.cachedPrices[upperSym] = priceVal
                     }
                 }
                 return result

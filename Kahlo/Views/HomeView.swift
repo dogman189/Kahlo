@@ -84,6 +84,7 @@ struct HomeView: View {
             }
             .onAppear {
                 initializeCoins()
+                updatePrices()
                 startTimer()
             }
             .onDisappear {
@@ -139,7 +140,7 @@ struct HomeView: View {
     }
     
     private func updatePrices() {
-        if !engine.useSimulator && !engine.apiKey.isEmpty {
+        if !engine.apiKey.isEmpty {
             let symbols = coins.map { $0.symbol }
             Task {
                 if let results = await engine.fetchMultiplePrices(symbols: symbols) {
