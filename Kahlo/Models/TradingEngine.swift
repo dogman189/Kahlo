@@ -27,6 +27,7 @@ public final class TradingEngine: ObservableObject {
     @Published public var apiKey: String = ""
     @Published public var useSimulator: Bool = true // Simulator mode by default so users can run it instantly
     @Published public var cachedPrices: [String: Double] = [:]
+    @Published public var availableSymbols: [String] = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
@@ -285,6 +286,15 @@ public final class TradingEngine: ObservableObject {
             return msg
         }
         return manualSell(symbol: targetSymbol, quantity: owned)
+    }
+
+    /// Manually add USD funds to the portfolio balance.
+    public func addFunds(_ usdAmount: Double) {
+        guard usdAmount > 0 else { return }
+        portfolio.usd += usdAmount
+        startingWallet += usdAmount
+        saveConfig()
+        log("System: Manually added $\(String(format: "%.2f", usdAmount)) USD to portfolio.")
     }
 
     /// Returns the current price for a symbol.  Uses the live engine price
@@ -788,4 +798,167 @@ public final class TradingEngine: ObservableObject {
             useSimulator = defaults.bool(forKey: "monet_use_simulator")
         }
     }
+
+    public func fetchTop100Coins() async -> [CMCListingCoin]? {
+        if apiKey.isEmpty {
+            return generateMockTop100()
+        }
+        
+        let urlStr = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=100&convert=USD"
+        guard let url = URL(string: urlStr) else { return generateMockTop100() }
+        
+        var request = URLRequest(url: url)
+        request.addValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
+        request.timeoutInterval = 15.0
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return generateMockTop100()
+            }
+            
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let dataArray = json["data"] as? [[String: Any]] {
+                var coinsList: [CMCListingCoin] = []
+                var updatedCachedPrices: [String: Double] = [:]
+                var symbolsList: [String] = []
+                
+                for item in dataArray {
+                    if let symbolVal = item["symbol"] as? String,
+                       let nameVal = item["name"] as? String,
+                       let quoteDict = item["quote"] as? [String: Any],
+                       let usdDict = quoteDict["USD"] as? [String: Any],
+                       let priceVal = usdDict["price"] as? Double,
+                       let changeVal = usdDict["percent_change_24h"] as? Double,
+                       let capVal = usdDict["market_cap"] as? Double,
+                       let volVal = usdDict["volume_24h"] as? Double {
+                        
+                        let cleanSym = symbolVal.uppercased()
+                        let coin = CMCListingCoin(
+                            symbol: cleanSym,
+                            name: nameVal,
+                            price: priceVal,
+                            change24h: changeVal,
+                            marketCap: capVal / 1_000_000_000.0,
+                            volume24h: volVal / 1_000_000.0
+                        )
+                        coinsList.append(coin)
+                        updatedCachedPrices[cleanSym] = priceVal
+                        symbolsList.append(cleanSym)
+                    }
+                }
+                
+                if !coinsList.isEmpty {
+                    self.cachedPrices = updatedCachedPrices
+                    self.availableSymbols = symbolsList
+                    return coinsList
+                }
+            }
+        } catch {
+            print("Error fetching listings: \(error.localizedDescription)")
+        }
+        return generateMockTop100()
+    }
+
+    private func generateMockTop100() -> [CMCListingCoin] {
+        let baseCoins = [
+            ("BTC", "Bitcoin", 68450.0, 1340.5, 28400.0),
+            ("ETH", "Ethereum", 3520.0, 422.3, 14200.0),
+            ("USDT", "Tether", 1.0, 112.5, 48000.0),
+            ("BNB", "BNB", 585.0, 87.2, 1600.0),
+            ("SOL", "Solana", 162.5, 75.1, 3800.0),
+            ("USDC", "USDC", 1.0, 32.4, 6200.0),
+            ("XRP", "XRP", 0.49, 27.2, 980.0),
+            ("DOGE", "Dogecoin", 0.142, 20.5, 1850.0),
+            ("ADA", "Cardano", 0.485, 17.3, 420.0),
+            ("SHIB", "Shiba Inu", 0.000022, 12.9, 850.0),
+            ("AVAX", "Avalanche", 32.5, 12.7, 390.0),
+            ("DOT", "Polkadot", 6.42, 9.2, 180.0),
+            ("LINK", "Chainlink", 15.35, 9.1, 310.0),
+            ("TRX", "TRON", 0.115, 10.1, 280.0),
+            ("NEAR", "Near Protocol", 5.8, 6.2, 450.0),
+            ("MATIC", "Polygon", 0.65, 6.4, 290.0),
+            ("PEPE", "Pepe", 0.000012, 5.1, 1200.0),
+            ("LTC", "Litecoin", 78.5, 5.8, 330.0),
+            ("UNI", "Uniswap", 7.2, 4.3, 210.0),
+            ("KAS", "Kaspa", 0.15, 3.6, 95.0),
+            ("ETC", "Ethereum Classic", 28.5, 4.1, 180.0),
+            ("IMX", "Immutable", 1.85, 2.7, 85.0),
+            ("ICP", "Internet Computer", 9.8, 4.5, 110.0),
+            ("XLM", "Stellar", 0.095, 2.8, 75.0),
+            ("FIL", "Filecoin", 4.35, 2.4, 95.0),
+            ("STX", "Stacks", 1.65, 2.4, 115.0),
+            ("LDO", "Lido DAO", 1.95, 1.7, 72.0),
+            ("GRT", "The Graph", 0.22, 2.1, 65.0),
+            ("FTM", "Fantom", 0.72, 2.0, 190.0),
+            ("MKR", "Maker", 2540.0, 2.3, 85.0)
+        ]
+        
+        var list: [CMCListingCoin] = []
+        var updatedCachedPrices: [String: Double] = [:]
+        var symbolsList: [String] = []
+
+        // Add standard 30 base coins with randomized variations
+        for c in baseCoins {
+            let change = Double.random(in: -4.5...5.5)
+            let coin = CMCListingCoin(
+                symbol: c.0,
+                name: c.1,
+                price: c.2 * (1.0 + Double.random(in: -0.02...0.02)),
+                change24h: change,
+                marketCap: c.3,
+                volume24h: c.4
+            )
+            list.append(coin)
+            updatedCachedPrices[c.0] = coin.price
+            symbolsList.append(c.0)
+        }
+
+        // Fill remaining 70 coins programmatically to reach 100
+        let fillerNames = [
+            "Aave", "Maker", "Synthetix", "Compound", "Curve", "dYdX", "1inch", "Loopring", "Enjin", "Decentraland",
+            "Sandbox", "Axie Infinity", "Gala", "Flow", "Chiliz", "Theta", "Helium", "Arweave", "Filecoin", "Storj",
+            "Siacoin", "Fetch.ai", "SingularityNET", "Ocean Protocol", "Render", "Akash Network", "Bittensor", "Livepeer", "Audius", "Basic Attention Token",
+            "Brave", "Jasmy", "Status", "Gnosis", "Loopring Token", "Balancer", "SushiSwap", "PancakeSwap", "Raydium", "Orca",
+            "Jupiter", "Wormhole", "Pyth Network", "Celestia", "Sui", "Aptos", "Arbitrum", "Optimism", "Starknet", "zkSync Token",
+            "Manta Network", "Altlayer", "Dymension", "EigenLayer", "Renzo", "Ether.fi", "Pendle", "Ethena", "MakerDAO", "Aave v3",
+            "Lido Staked ETH", "Rocket Pool", "Frax Share", "Convex Finance", "Yearn Finance", "Curve DAO", "Balancer Governance", "Loopring DAO", "Compound Governance", "Tornado Cash"
+        ]
+
+        for i in 1...70 {
+            let name = i <= fillerNames.count ? fillerNames[i-1] : "Token \(i)"
+            let sym = name.uppercased().replacingOccurrences(of: " ", with: "").prefix(4) + "\(i)"
+            let symStr = String(sym)
+            let mockPrice = Double.random(in: 0.05...45.0)
+            let change = Double.random(in: -12.0...15.0)
+            let cap = Double.random(in: 0.1...1.5)
+            let vol = Double.random(in: 1.0...50.0)
+
+            let coin = CMCListingCoin(
+                symbol: symStr,
+                name: name,
+                price: mockPrice,
+                change24h: change,
+                marketCap: cap,
+                volume24h: vol
+            )
+            list.append(coin)
+            updatedCachedPrices[symStr] = mockPrice
+            symbolsList.append(symStr)
+        }
+
+        self.cachedPrices = updatedCachedPrices
+        self.availableSymbols = symbolsList
+        return list
+    }
+}
+
+public struct CMCListingCoin: Codable, Identifiable, Hashable {
+    public var id: String { symbol }
+    public let symbol: String
+    public let name: String
+    public let price: Double
+    public let change24h: Double
+    public let marketCap: Double
+    public let volume24h: Double
 }

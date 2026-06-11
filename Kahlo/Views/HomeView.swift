@@ -11,11 +11,19 @@ struct CoinModel: Identifiable, Hashable {
     var sparkline: [Double]
 }
 
+enum MarketFilter: String, CaseIterable {
+    case all = "ALL"
+    case gainers = "GAINERS"
+    case losers = "LOSERS"
+    case holdings = "HOLDINGS"
+}
+
 struct HomeView: View {
     @ObservedObject var engine: TradingEngine
     @State private var coins: [CoinModel] = []
     @State private var selectedCoin: CoinModel?
     @State private var searchQuery: String = ""
+    @State private var selectedFilter: MarketFilter = .all
     @State private var timer: Timer?
     
     // Default base data to initialize
@@ -39,6 +47,9 @@ struct HomeView: View {
                     
                     // MARK: - Search Field
                     searchBarSection
+
+                    // MARK: - Filter Pills
+                    filterPillsSection
                     
                     // MARK: - Coins List
                     coinsListSection
@@ -95,13 +106,63 @@ struct HomeView: View {
     }
     
     private var filteredCoins: [CoinModel] {
+        var baseCoins = coins
+        
+        switch selectedFilter {
+        case .all:
+            break
+        case .gainers:
+            baseCoins = baseCoins.filter { $0.change24h > 0 }
+        case .losers:
+            baseCoins = baseCoins.filter { $0.change24h < 0 }
+        case .holdings:
+            baseCoins = baseCoins.filter {
+                $0.symbol == engine.symbol || (engine.portfolio.holdings[$0.symbol] ?? 0.0) > 0
+            }
+        }
+        
         if searchQuery.isEmpty {
-            return coins
+            return baseCoins
         } else {
-            return coins.filter {
+            return baseCoins.filter {
                 $0.name.lowercased().contains(searchQuery.lowercased()) ||
                 $0.symbol.lowercased().contains(searchQuery.lowercased())
             }
+        }
+    }
+
+    private var filterPillsSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(MarketFilter.allCases, id: \.self) { filter in
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            selectedFilter = filter
+                        }
+                    }) {
+                        Text(filter.rawValue)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(selectedFilter == filter ? .white : .gray)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                selectedFilter == filter
+                                    ? Color.cyan.opacity(0.85)
+                                    : Color.white.opacity(0.04)
+                            )
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        selectedFilter == filter ? Color.cyan.opacity(0.5) : Color.white.opacity(0.05),
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(ScaleButtonStyle())
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
     
@@ -140,35 +201,46 @@ struct HomeView: View {
     }
     
     private func updatePrices() {
-        if !engine.apiKey.isEmpty {
-            let symbols = coins.map { $0.symbol }
-            Task {
-                if let results = await engine.fetchMultiplePrices(symbols: symbols) {
-                    await MainActor.run {
-                        for i in 0..<coins.count {
-                            let sym = coins[i].symbol.uppercased()
-                            if let data = results[sym] {
-                                coins[i].price = data.price
-                                coins[i].change24h = data.change24h
-                                coins[i].marketCap = data.marketCap
-                                coins[i].volume24h = data.volume24h
-                                
-                                if coins[i].sparkline.count > 14 {
-                                    coins[i].sparkline.removeFirst()
-                                }
-                                coins[i].sparkline.append(data.price)
+        Task {
+            if let results = await engine.fetchTop100Coins() {
+                await MainActor.run {
+                    var newCoins: [CoinModel] = []
+                    for rc in results {
+                        let sym = rc.symbol.uppercased()
+                        var spark = [rc.price]
+                        if let existing = self.coins.first(where: { $0.symbol.uppercased() == sym }) {
+                            spark = existing.sparkline
+                            if spark.count > 14 {
+                                spark.removeFirst()
+                            }
+                            spark.append(rc.price)
+                        } else {
+                            // Seed a realistic sparkline for new coins
+                            for _ in 1...6 {
+                                let variation = Double.random(in: -0.01...0.01)
+                                spark.insert(rc.price * (1.0 + variation), at: 0)
                             }
                         }
-                        updateActiveEngine()
+                        
+                        let model = CoinModel(
+                            symbol: sym,
+                            name: rc.name,
+                            price: rc.price,
+                            change24h: rc.change24h,
+                            marketCap: rc.marketCap,
+                            volume24h: rc.volume24h,
+                            sparkline: spark
+                        )
+                        newCoins.append(model)
                     }
-                } else {
-                    await MainActor.run {
-                        runMockUpdate()
-                    }
+                    self.coins = newCoins
+                    updateActiveEngine()
+                }
+            } else {
+                await MainActor.run {
+                    runMockUpdate()
                 }
             }
-        } else {
-            runMockUpdate()
         }
     }
     

@@ -12,8 +12,9 @@ struct TradeView: View {
     @State private var selectedPercentage: Double = 0.0
     @State private var recentManualTrades: [ManualTradeRecord] = []
     @State private var timer: Timer?
+    @State private var showAddFundsAlert: Bool = false
+    @State private var addFundsAmountText: String = ""
 
-    private let availableSymbols = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
 
     enum TradeSide: String, CaseIterable {
         case buy = "BUY"
@@ -82,6 +83,21 @@ struct TradeView: View {
         }
         .background(GlassBackgroundView())
         .overlay(confirmationOverlay)
+        .alert("Add Funds", isPresented: $showAddFundsAlert) {
+            TextField("Amount (USD)", text: $addFundsAmountText)
+                .keyboardType(.decimalPad)
+            Button("Add") {
+                if let amount = Double(addFundsAmountText), amount > 0 {
+                    engine.addFunds(amount)
+                }
+                addFundsAmountText = ""
+            }
+            Button("Cancel", role: .cancel) {
+                addFundsAmountText = ""
+            }
+        } message: {
+            Text("Enter the amount of USD you want to add to your trading balance.")
+        }
         .onAppear {
             selectedSymbol = engine.symbol
             fetchMarketPrices()
@@ -93,10 +109,8 @@ struct TradeView: View {
     }
 
     private func fetchMarketPrices() {
-        if !engine.apiKey.isEmpty {
-            Task {
-                _ = await engine.fetchMultiplePrices(symbols: availableSymbols)
-            }
+        Task {
+            _ = await engine.fetchTop100Coins()
         }
     }
 
@@ -125,23 +139,34 @@ struct TradeView: View {
                     .foregroundColor(.gray)
             }
             Spacer()
-            // Balance pill
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("AVAILABLE")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.gray)
-                Text("$\(String(format: "%.2f", engine.portfolio.usd))")
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(.cyan)
+            // Balance pill + Add button
+            HStack(spacing: 8) {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("AVAILABLE")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.gray)
+                    Text("$\(String(format: "%.2f", engine.portfolio.usd))")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.cyan.opacity(0.08))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.cyan.opacity(0.15), lineWidth: 1)
+                )
+
+                Button(action: {
+                    showAddFundsAlert = true
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.cyan)
+                }
+                .buttonStyle(ScaleButtonStyle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.cyan.opacity(0.08))
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.cyan.opacity(0.15), lineWidth: 1)
-            )
         }
         .padding(.top, 10)
     }
@@ -196,7 +221,7 @@ struct TradeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(availableSymbols, id: \.self) { sym in
+                    ForEach(engine.availableSymbols, id: \.self) { sym in
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 selectedSymbol = sym
