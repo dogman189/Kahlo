@@ -317,6 +317,17 @@ public final class TradingEngine: ObservableObject {
         log("System: Manually added $\(String(format: "%.2f", usdAmount)) USD to portfolio.")
     }
 
+    /// Manually remove USD funds from the portfolio balance.
+    public func removeFunds(_ usdAmount: Double) {
+        guard usdAmount > 0 else { return }
+        let amountToRemove = min(usdAmount, portfolio.usd)
+        guard amountToRemove > 0 else { return }
+        portfolio.usd -= amountToRemove
+        startingWallet = max(0.0, startingWallet - amountToRemove)
+        saveConfig()
+        log("System: Manually removed $\(String(format: "%.2f", amountToRemove)) USD from portfolio.")
+    }
+
     /// Resets the portfolio and trading stats to startingWallet and zero holdings/stats.
     public func resetPortfolio() {
         portfolio = Portfolio(usd: startingWallet, holdings: [:])

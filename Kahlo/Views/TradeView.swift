@@ -13,6 +13,8 @@ struct TradeView: View {
     @State private var recentManualTrades: [ManualTradeRecord] = []
     @State private var showAddFundsAlert: Bool = false
     @State private var addFundsAmountText: String = ""
+    @State private var showRemoveFundsAlert: Bool = false
+    @State private var removeFundsAmountText: String = ""
 
 
     enum TradeSide: String, CaseIterable {
@@ -97,6 +99,21 @@ struct TradeView: View {
         } message: {
             Text("Enter the amount of USD you want to add to your trading balance.")
         }
+        .alert("Remove Funds", isPresented: $showRemoveFundsAlert) {
+            TextField("Amount (USD)", text: $removeFundsAmountText)
+                .keyboardType(.decimalPad)
+            Button("Remove", role: .destructive) {
+                if let amount = Double(removeFundsAmountText), amount > 0 {
+                    engine.removeFunds(amount)
+                }
+                removeFundsAmountText = ""
+            }
+            Button("Cancel", role: .cancel) {
+                removeFundsAmountText = ""
+            }
+        } message: {
+            Text("Enter the amount of USD you want to remove from your trading balance.")
+        }
         .onAppear {
             selectedSymbol = engine.symbol
             Task {
@@ -143,6 +160,15 @@ struct TradeView: View {
                     showAddFundsAlert = true
                 }) {
                     Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.cyan)
+                }
+                .buttonStyle(ScaleButtonStyle())
+
+                Button(action: {
+                    showRemoveFundsAlert = true
+                }) {
+                    Image(systemName: "minus.circle.fill")
                         .font(.system(size: 22))
                         .foregroundColor(.cyan)
                 }

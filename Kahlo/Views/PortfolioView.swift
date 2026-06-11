@@ -2,6 +2,10 @@ import SwiftUI
 
 struct PortfolioView: View {
     @ObservedObject var engine: TradingEngine
+    @State private var showAddFundsAlert: Bool = false
+    @State private var addFundsAmountText: String = ""
+    @State private var showRemoveFundsAlert: Bool = false
+    @State private var removeFundsAmountText: String = ""
     
     private var netWorth: Double {
         var total = engine.portfolio.usd
@@ -67,6 +71,24 @@ struct PortfolioView: View {
                             Text("USD Balance")
                                 .font(.caption)
                                 .foregroundColor(.gray)
+                            Spacer()
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    showAddFundsAlert = true
+                                }) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.green)
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                                
+                                Button(action: {
+                                    showRemoveFundsAlert = true
+                                }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(.green)
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                            }
                         }
                         Text("$\(String(format: "%.2f", engine.portfolio.usd))")
                             .font(.system(size: 20, weight: .bold, design: .monospaced))
@@ -133,6 +155,36 @@ struct PortfolioView: View {
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: engine.totalTrades)
         }
         .background(GlassBackgroundView())
+        .alert("Add Funds", isPresented: $showAddFundsAlert) {
+            TextField("Amount (USD)", text: $addFundsAmountText)
+                .keyboardType(.decimalPad)
+            Button("Add") {
+                if let amount = Double(addFundsAmountText), amount > 0 {
+                    engine.addFunds(amount)
+                }
+                addFundsAmountText = ""
+            }
+            Button("Cancel", role: .cancel) {
+                addFundsAmountText = ""
+            }
+        } message: {
+            Text("Enter the amount of USD you want to add to your trading balance.")
+        }
+        .alert("Remove Funds", isPresented: $showRemoveFundsAlert) {
+            TextField("Amount (USD)", text: $removeFundsAmountText)
+                .keyboardType(.decimalPad)
+            Button("Remove", role: .destructive) {
+                if let amount = Double(removeFundsAmountText), amount > 0 {
+                    engine.removeFunds(amount)
+                }
+                removeFundsAmountText = ""
+            }
+            Button("Cancel", role: .cancel) {
+                removeFundsAmountText = ""
+            }
+        } message: {
+            Text("Enter the amount of USD you want to remove from your trading balance.")
+        }
     }
 }
 
