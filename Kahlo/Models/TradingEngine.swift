@@ -28,6 +28,7 @@ public final class TradingEngine: ObservableObject {
     @Published public var useSimulator: Bool = true // Simulator mode by default so users can run it instantly
     @Published public var cachedPrices: [String: Double] = [:]
     @Published public var availableSymbols: [String] = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
+    @Published public var lastMarketRefresh: Date = Date()
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
@@ -75,6 +76,7 @@ public final class TradingEngine: ObservableObject {
     // Neural Network
     public var neuralNet: NeuralNetwork?
     private var task: Task<Void, Never>?
+    private var marketRefreshTimer: Timer?
 
     // Constants
     private let minBandwidth: Double = 0.0002
@@ -93,6 +95,25 @@ public final class TradingEngine: ObservableObject {
         // Load default config or saved values if preferred.
         // For simplicity, we initialize with defaults.
         loadConfig()
+        startMarketRefreshTimer()
+    }
+
+    /// Centralized 61-second timer that refreshes market prices for all views.
+    /// Runs continuously regardless of which tab is active.
+    private func startMarketRefreshTimer() {
+        marketRefreshTimer?.invalidate()
+        marketRefreshTimer = Timer.scheduledTimer(withTimeInterval: 61.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.refreshMarketData()
+            }
+        }
+    }
+
+    /// Fetches top 100 coins and updates lastMarketRefresh so observing views refresh.
+    public func refreshMarketData() async {
+        _ = await fetchTop100Coins()
+        lastMarketRefresh = Date()
     }
 
     public func log(_ message: String) {

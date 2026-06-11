@@ -24,7 +24,6 @@ struct HomeView: View {
     @State private var selectedCoin: CoinModel?
     @State private var searchQuery: String = ""
     @State private var selectedFilter: MarketFilter = .all
-    @State private var timer: Timer?
     
     // Default base data to initialize
     private let initialCoins = [
@@ -71,7 +70,7 @@ struct HomeView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         withAnimation(.spring()) {
-                            updatePrices()
+                            updatePricesFromEngine()
                         }
                     }) {
                         Image(systemName: "arrow.clockwise")
@@ -95,11 +94,12 @@ struct HomeView: View {
             }
             .onAppear {
                 initializeCoins()
-                updatePrices()
-                startTimer()
+                updatePricesFromEngine()
             }
-            .onDisappear {
-                stopTimer()
+            .onChange(of: engine.lastMarketRefresh) { _ in
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    syncCoinsFromEngine()
+                }
             }
         }
         .navigationViewStyle(.stack)
@@ -185,19 +185,13 @@ struct HomeView: View {
         }
     }
     
-    private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 61.0, repeats: true) { _ in
-            DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    self.updatePrices()
-                }
-            }
-        }
+    private func updatePricesFromEngine() {
+        updatePrices()
     }
-    
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
+
+    /// Syncs the local coins array using a full fetch to get all metadata.
+    private func syncCoinsFromEngine() {
+        updatePrices()
     }
     
     private func updatePrices() {

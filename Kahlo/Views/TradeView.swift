@@ -11,7 +11,6 @@ struct TradeView: View {
     @State private var usePercentage: Bool = false
     @State private var selectedPercentage: Double = 0.0
     @State private var recentManualTrades: [ManualTradeRecord] = []
-    @State private var timer: Timer?
     @State private var showAddFundsAlert: Bool = false
     @State private var addFundsAmountText: String = ""
 
@@ -100,30 +99,12 @@ struct TradeView: View {
         }
         .onAppear {
             selectedSymbol = engine.symbol
-            fetchMarketPrices()
-            startTimer()
-        }
-        .onDisappear {
-            stopTimer()
+            Task {
+                await engine.refreshMarketData()
+            }
         }
     }
 
-    private func fetchMarketPrices() {
-        Task {
-            _ = await engine.fetchTop100Coins()
-        }
-    }
-
-    private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 61.0, repeats: true) { _ in
-            fetchMarketPrices()
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
 
     // MARK: - Header
 
