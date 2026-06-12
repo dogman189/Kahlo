@@ -85,11 +85,11 @@ struct TradeView: View {
         .background(GlassBackgroundView())
         .overlay(confirmationOverlay)
         .alert("Add Funds", isPresented: $showAddFundsAlert) {
-            TextField("Amount (USD)", text: $addFundsAmountText)
+            TextField("Amount (\(engine.selectedCurrency.rawValue))", text: $addFundsAmountText)
                 .keyboardType(.decimalPad)
             Button("Add") {
                 if let amount = Double(addFundsAmountText), amount > 0 {
-                    engine.addFunds(amount)
+                    engine.addFunds(engine.selectedCurrency.convertToUSD(amount))
                 }
                 addFundsAmountText = ""
             }
@@ -97,14 +97,14 @@ struct TradeView: View {
                 addFundsAmountText = ""
             }
         } message: {
-            Text("Enter the amount of USD you want to add to your trading balance.")
+            Text("Enter the amount of \(engine.selectedCurrency.rawValue) you want to add to your trading balance.")
         }
         .alert("Remove Funds", isPresented: $showRemoveFundsAlert) {
-            TextField("Amount (USD)", text: $removeFundsAmountText)
+            TextField("Amount (\(engine.selectedCurrency.rawValue))", text: $removeFundsAmountText)
                 .keyboardType(.decimalPad)
             Button("Remove", role: .destructive) {
                 if let amount = Double(removeFundsAmountText), amount > 0 {
-                    engine.removeFunds(amount)
+                    engine.removeFunds(engine.selectedCurrency.convertToUSD(amount))
                 }
                 removeFundsAmountText = ""
             }
@@ -112,7 +112,7 @@ struct TradeView: View {
                 removeFundsAmountText = ""
             }
         } message: {
-            Text("Enter the amount of USD you want to remove from your trading balance.")
+            Text("Enter the amount of \(engine.selectedCurrency.rawValue) you want to remove from your trading balance.")
         }
         .onAppear {
             selectedSymbol = engine.symbol
@@ -143,9 +143,11 @@ struct TradeView: View {
                     Text("AVAILABLE")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(.gray)
-                    Text("$\(String(format: "%.2f", engine.portfolio.usd))")
+                    Text(engine.selectedCurrency.format(engine.portfolio.usd))
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.cyan)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -322,7 +324,7 @@ struct TradeView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(selectedSide == .buy ? "AMOUNT (USD)" : "QUANTITY (\(selectedSymbol))")
+                Text(selectedSide == .buy ? "AMOUNT (\(engine.selectedCurrency.rawValue))" : "QUANTITY (\(selectedSymbol))")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(.gray)
                 Spacer()
@@ -339,9 +341,15 @@ struct TradeView: View {
                     Circle()
                         .fill(selectedSide.color.opacity(0.15))
                         .frame(width: 38, height: 38)
-                    Image(systemName: selectedSide == .buy ? "dollarsign" : "bitcoinsign")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(selectedSide.color)
+                    if selectedSide == .buy {
+                        Text(engine.selectedCurrency.symbol)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(selectedSide.color)
+                    } else {
+                        Image(systemName: "bitcoinsign")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(selectedSide.color)
+                    }
                 }
 
                 TextField(selectedSide == .buy ? "0.00" : "0.000000", text: $amountText)
@@ -373,7 +381,7 @@ struct TradeView: View {
 
             // Max available hint
             if selectedSide == .buy {
-                Text("Max: $\(String(format: "%.2f", engine.portfolio.usd))")
+                Text("Max: \(engine.selectedCurrency.format(engine.portfolio.usd))")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(.gray.opacity(0.5))
             } else {
@@ -430,11 +438,12 @@ struct TradeView: View {
         let estimatedTotal: Double
 
         if selectedSide == .buy {
-            estimatedQty = currentPrice > 0 ? parsedAmount / currentPrice : 0.0
+            let usdAmount = engine.selectedCurrency.convertToUSD(parsedAmount)
+            estimatedQty = currentPrice > 0 ? usdAmount / currentPrice : 0.0
             estimatedTotal = parsedAmount
         } else {
             estimatedQty = parsedAmount
-            estimatedTotal = parsedAmount * currentPrice
+            estimatedTotal = engine.selectedCurrency.convert(parsedAmount * currentPrice)
         }
 
         return VStack(alignment: .leading, spacing: 12) {
@@ -479,7 +488,7 @@ struct TradeView: View {
                     .font(.system(size: 14))
                     .foregroundColor(.gray)
                 Spacer()
-                Text("$\(String(format: "%.2f", estimatedTotal))")
+                Text(engine.selectedCurrency.format(estimatedTotal))
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(.cyan)
             }
@@ -494,7 +503,8 @@ struct TradeView: View {
         let parsedAmount = Double(amountText) ?? 0.0
         let isValid: Bool = {
             if selectedSide == .buy {
-                return parsedAmount > 0 && parsedAmount <= engine.portfolio.usd
+                let usdAmount = engine.selectedCurrency.convertToUSD(parsedAmount)
+                return parsedAmount > 0 && usdAmount <= engine.portfolio.usd
             } else {
                 let holdings = engine.portfolio.holdings[selectedSymbol] ?? 0.0
                 return parsedAmount > 0 && parsedAmount <= holdings
@@ -548,7 +558,7 @@ struct TradeView: View {
                         Text("\(trade.side) \(trade.symbol)")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundColor(.primary)
-                        Text("\(String(format: "%.6f", trade.quantity)) @ $\(String(format: "%.2f", trade.price))")
+                        Text("\(String(format: "%.6f", trade.quantity)) @ \(engine.selectedCurrency.format(trade.price))")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.gray)
                     }
@@ -556,7 +566,7 @@ struct TradeView: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("$\(String(format: "%.2f", trade.total))")
+                        Text(engine.selectedCurrency.format(trade.total))
                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                             .foregroundColor(.primary)
                         Text(timeAgo(trade.timestamp))
@@ -640,7 +650,7 @@ struct TradeView: View {
     private func applyPercentage(_ pct: Double) {
         if selectedSide == .buy {
             let maxUsd = engine.portfolio.usd
-            let amount = maxUsd * (pct / 100.0)
+            let amount = engine.selectedCurrency.convert(maxUsd) * (pct / 100.0)
             amountText = String(format: "%.2f", amount)
         } else {
             let holdings = engine.portfolio.holdings[selectedSymbol] ?? 0.0
@@ -657,12 +667,13 @@ struct TradeView: View {
         let currentPrice = engine.priceForSymbol(selectedSymbol)
 
         if selectedSide == .buy {
-            result = engine.manualBuy(symbol: selectedSymbol, usdAmount: parsedAmount)
-            let qty = currentPrice > 0 ? parsedAmount / currentPrice : 0.0
+            let usdAmount = engine.selectedCurrency.convertToUSD(parsedAmount)
+            result = engine.manualBuy(symbol: selectedSymbol, usdAmount: usdAmount)
+            let qty = currentPrice > 0 ? usdAmount / currentPrice : 0.0
             recentManualTrades.append(ManualTradeRecord(
                 side: "BUY", symbol: selectedSymbol,
                 quantity: qty, price: currentPrice,
-                total: parsedAmount, timestamp: Date()
+                total: usdAmount, timestamp: Date()
             ))
         } else {
             let proceeds = parsedAmount * currentPrice

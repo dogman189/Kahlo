@@ -359,7 +359,7 @@ struct HomeView: View {
                         
                         // Price & Valuation info
                         VStack(alignment: .trailing, spacing: 3) {
-                            Text(coin.price >= 1.0 ? "$\(String(format: "%.2f", coin.price))" : "$\(String(format: "%.4f", coin.price))")
+                            Text(engine.selectedCurrency.format(coin.price, decimalPlaces: coin.price >= 1.0 ? 2 : 4))
                                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.primary)
                             
@@ -471,7 +471,7 @@ struct CoinDetailView: View {
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(.gray)
                         
-                        Text(coin.price >= 1.0 ? "$\(String(format: "%.2f", coin.price))" : "$\(String(format: "%.4f", coin.price))")
+                        Text(engine.selectedCurrency.format(coin.price, decimalPlaces: coin.price >= 1.0 ? 2 : 4))
                             .font(.system(size: 38, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                         
@@ -493,13 +493,13 @@ struct CoinDetailView: View {
                         
                         Divider().background(Color.white.opacity(0.06))
                         
-                        MetricRow(title: "Market Capitalization", value: "$\(String(format: "%.1f", coin.marketCap))B")
-                        MetricRow(title: "24h Trading Volume", value: "$\(String(format: "%.1f", coin.volume24h))M")
+                        MetricRow(title: "Market Capitalization", value: "\(engine.selectedCurrency.symbol)\(String(format: "%.1f", engine.selectedCurrency.convert(coin.marketCap)))B")
+                        MetricRow(title: "24h Trading Volume", value: "\(engine.selectedCurrency.symbol)\(String(format: "%.1f", engine.selectedCurrency.convert(coin.volume24h)))M")
                         
                         let holdings = engine.portfolio.holdings[coin.symbol] ?? 0.0
                         let valuation = holdings * coin.price
                         MetricRow(title: "Your Holdings", value: "\(String(format: "%.4f", holdings)) \(coin.symbol)")
-                        MetricRow(title: "Holdings Value", value: "$\(String(format: "%.2f", valuation))", valueColor: .cyan)
+                        MetricRow(title: "Holdings Value", value: engine.selectedCurrency.format(valuation), valueColor: .cyan)
                     }
                     .padding(16)
                     .background(Color.white.opacity(0.02))

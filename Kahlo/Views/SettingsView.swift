@@ -3,6 +3,23 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var engine: TradingEngine
     @AppStorage("isDarkMode") private var isDarkMode = true
+    @AppStorage("showTabMarkets") private var showTabMarkets = true
+    @AppStorage("showTabTrade") private var showTabTrade = true
+    @AppStorage("showTabTerminal") private var showTabTerminal = true
+    @AppStorage("showTabBrain") private var showTabBrain = true
+    @AppStorage("showTabPortfolio") private var showTabPortfolio = true
+    @AppStorage("showTabSettings") private var showTabSettings = true
+
+    private var activeTabCount: Int {
+        var count = 0
+        if showTabMarkets { count += 1 }
+        if showTabTrade { count += 1 }
+        if showTabTerminal { count += 1 }
+        if showTabBrain { count += 1 }
+        if showTabPortfolio { count += 1 }
+        if showTabSettings { count += 1 }
+        return count
+    }
     
     var body: some View {
         NavigationView {
@@ -10,6 +27,18 @@ struct SettingsView: View {
                 Section(header: Text("Appearance")) {
                     Toggle("Dark Mode", isOn: $isDarkMode)
                         .tint(.cyan)
+                }
+                
+                Section(header: Text("Currency")) {
+                    Picker("Active Currency", selection: $engine.selectedCurrency) {
+                        ForEach(AppCurrency.allCases) { currency in
+                            Text("\(currency.rawValue) (\(currency.symbol))").tag(currency)
+                        }
+                    }
+                    .tint(.cyan)
+                    .onChange(of: engine.selectedCurrency) { _ in
+                        engine.saveConfig()
+                    }
                 }
                 
                 Section(header: Text("API & Connectivity")) {
@@ -151,6 +180,44 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(header: Text("Customize Navigation"), footer: Text("At least one tab must remain active. Settings tab cannot be disabled to ensure customization is always accessible.")) {
+                    Toggle(isOn: $showTabMarkets) {
+                        Label("Markets", systemImage: "chart.bar.xaxis")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabMarkets)
+                    
+                    Toggle(isOn: $showTabTrade) {
+                        Label("Trade", systemImage: "arrow.left.arrow.right.circle.fill")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabTrade)
+                    
+                    Toggle(isOn: $showTabTerminal) {
+                        Label("Terminal", systemImage: "terminal.fill")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabTerminal)
+                    
+                    Toggle(isOn: $showTabBrain) {
+                        Label("AI Brain", systemImage: "brain")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabBrain)
+                    
+                    Toggle(isOn: $showTabPortfolio) {
+                        Label("Portfolio", systemImage: "chart.pie.fill")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabPortfolio)
+                    
+                    Toggle(isOn: $showTabSettings) {
+                        Label("Settings (Always On)", systemImage: "gearshape.fill")
+                    }
+                    .tint(.cyan)
+                    .disabled(true)
+                }
+
                 Section(header: Text("Reset Data")) {
                     Button(role: .destructive) {
                         engine.resetPortfolio()
@@ -167,6 +234,9 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .scrollContentBackground(.hidden)
             .background(GlassBackgroundView())
+            .onDisappear {
+                engine.saveConfig()
+            }
         }
     }
 }

@@ -52,7 +52,7 @@ struct MonitorView: View {
                             Text("Current Price")
                                 .font(.caption)
                                 .foregroundColor(.gray)
-                            Text(engine.price > 0 ? "$\(String(format: "%.2f", engine.price))" : "$0.00")
+                            Text(engine.price > 0 ? engine.selectedCurrency.format(engine.price) : engine.selectedCurrency.format(0.0))
                                 .font(.system(size: 38, weight: .bold, design: .monospaced))
                                 .foregroundColor(priceColor)
                                 .onChange(of: engine.price) { oldPrice, newPrice in
@@ -146,7 +146,7 @@ struct MonitorView: View {
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
                             if let s = engine.sma {
-                                Text("SMA: $\(String(format: "%.2f", s))")
+                                Text("SMA: \(engine.selectedCurrency.format(s))")
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundColor(.cyan)
                             }

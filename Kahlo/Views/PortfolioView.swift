@@ -41,14 +41,16 @@ struct PortfolioView: View {
                         .font(.subheadline)
                         .foregroundColor(.gray)
                     
-                    Text("$\(String(format: "%.2f", netWorth))")
+                    Text(engine.selectedCurrency.format(netWorth))
                         .font(.system(size: 46, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
                     HStack(spacing: 8) {
                         Image(systemName: pnlUsd >= 0 ? "arrow.up.right" : "arrow.down.right")
                         Text("\(String(format: "%+.2f", pnlPct))%")
-                        Text("(\(String(format: "%+.2f", pnlUsd)))")
+                        let pnlFormatted = engine.selectedCurrency.format(abs(pnlUsd))
+                        let pnlPrefix = pnlUsd >= 0 ? "+" : "-"
+                        Text("(\(pnlPrefix)\(pnlFormatted))")
                     }
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(pnlUsd >= 0 ? .green : .red)
@@ -61,61 +63,122 @@ struct PortfolioView: View {
                 .frame(maxWidth: .infinity)
                 .glassPanel()
                 
-                // Balances
-                HStack(spacing: 16) {
-                    // USD
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "dollarsign.circle.fill")
-                                .foregroundColor(.green)
-                            Text("USD Balance")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            HStack(spacing: 8) {
-                                Button(action: {
-                                    showAddFundsAlert = true
-                                }) {
+                // USD Balance Card
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .foregroundColor(.green)
+                        Text("\(engine.selectedCurrency.rawValue) Cash Balance")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                showAddFundsAlert = true
+                            }) {
+                                HStack(spacing: 4) {
                                     Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.green)
+                                    Text("Add")
+                                        .font(.system(size: 12, weight: .bold))
                                 }
-                                .buttonStyle(BorderlessButtonStyle())
-                                
-                                Button(action: {
-                                    showRemoveFundsAlert = true
-                                }) {
+                                .foregroundColor(.green)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                            
+                            Button(action: {
+                                showRemoveFundsAlert = true
+                            }) {
+                                HStack(spacing: 4) {
                                     Image(systemName: "minus.circle.fill")
-                                        .foregroundColor(.green)
+                                    Text("Remove")
+                                        .font(.system(size: 12, weight: .bold))
                                 }
-                                .buttonStyle(BorderlessButtonStyle())
+                                .foregroundColor(.red)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                    }
+                    Text(engine.selectedCurrency.format(engine.portfolio.usd))
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassPanel()
+                
+                // Asset Holdings Section
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("ASSET HOLDINGS")
+                        .font(.system(.caption, design: .monospaced))
+                        .bold()
+                        .foregroundColor(.gray)
+                    
+                    let nonZeroHoldings = engine.availableSymbols.filter { (engine.portfolio.holdings[$0] ?? 0.0) > 0 }
+                    
+                    if nonZeroHoldings.isEmpty {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "tray.empty")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.gray.opacity(0.6))
+                                Text("No crypto holdings yet")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.vertical, 12)
+                            Spacer()
+                        }
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(nonZeroHoldings, id: \.self) { sym in
+                                let qty = engine.portfolio.holdings[sym] ?? 0.0
+                                let price = engine.priceForSymbol(sym)
+                                let usdValue = qty * price
+                                
+                                HStack {
+                                    HStack(spacing: 10) {
+                                        Circle()
+                                            .fill(Color.orange.opacity(0.15))
+                                            .frame(width: 32, height: 32)
+                                            .overlay(
+                                                Text(sym.prefix(1))
+                                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                    .foregroundColor(.orange)
+                                            )
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(sym)
+                                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                                .foregroundColor(.primary)
+                                            Text("\(String(format: "%.6f", qty)) \(sym)")
+                                                .font(.system(size: 12, design: .monospaced))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(engine.selectedCurrency.format(usdValue))
+                                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.primary)
+                                        Text(engine.selectedCurrency.format(price, decimalPlaces: price >= 1.0 ? 2 : 4))
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundColor(.gray.opacity(0.8))
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                                
+                                if sym != nonZeroHoldings.last {
+                                    Divider().background(Color.white.opacity(0.06))
+                                }
                             }
                         }
-                        Text("$\(String(format: "%.2f", engine.portfolio.usd))")
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .glassPanel()
-                    
-                    // Crypto
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "bitcoinsign.circle.fill")
-                                .foregroundColor(.orange)
-                            Text("\(engine.symbol) Holdings")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                        let holdings = engine.portfolio.holdings[engine.symbol] ?? 0.0
-                        Text("\(String(format: "%.6f", holdings))")
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .glassPanel()
                 }
+                .padding()
+                .glassPanel()
                 
                 // Trade Statistics
                 VStack(alignment: .leading, spacing: 16) {
@@ -139,7 +202,7 @@ struct PortfolioView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                             Spacer()
-                            Text("$\(String(format: "%.2f", avgPrice))")
+                            Text(engine.selectedCurrency.format(avgPrice))
                                 .font(.system(.body, design: .monospaced))
                                 .bold()
                                 .foregroundColor(.amber)
@@ -156,11 +219,11 @@ struct PortfolioView: View {
         }
         .background(GlassBackgroundView())
         .alert("Add Funds", isPresented: $showAddFundsAlert) {
-            TextField("Amount (USD)", text: $addFundsAmountText)
+            TextField("Amount (\(engine.selectedCurrency.rawValue))", text: $addFundsAmountText)
                 .keyboardType(.decimalPad)
             Button("Add") {
                 if let amount = Double(addFundsAmountText), amount > 0 {
-                    engine.addFunds(amount)
+                    engine.addFunds(engine.selectedCurrency.convertToUSD(amount))
                 }
                 addFundsAmountText = ""
             }
@@ -168,14 +231,14 @@ struct PortfolioView: View {
                 addFundsAmountText = ""
             }
         } message: {
-            Text("Enter the amount of USD you want to add to your trading balance.")
+            Text("Enter the amount of \(engine.selectedCurrency.rawValue) you want to add to your trading balance.")
         }
         .alert("Remove Funds", isPresented: $showRemoveFundsAlert) {
-            TextField("Amount (USD)", text: $removeFundsAmountText)
+            TextField("Amount (\(engine.selectedCurrency.rawValue))", text: $removeFundsAmountText)
                 .keyboardType(.decimalPad)
             Button("Remove", role: .destructive) {
                 if let amount = Double(removeFundsAmountText), amount > 0 {
-                    engine.removeFunds(amount)
+                    engine.removeFunds(engine.selectedCurrency.convertToUSD(amount))
                 }
                 removeFundsAmountText = ""
             }
@@ -183,7 +246,7 @@ struct PortfolioView: View {
                 removeFundsAmountText = ""
             }
         } message: {
-            Text("Enter the amount of USD you want to remove from your trading balance.")
+            Text("Enter the amount of \(engine.selectedCurrency.rawValue) you want to remove from your trading balance.")
         }
     }
 }

@@ -32,6 +32,10 @@ struct GlassBackgroundView: View {
                 .blur(radius: 80)
                 .offset(x: -50, y: 150)
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
         .ignoresSafeArea()
     }
 }

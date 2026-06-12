@@ -29,6 +29,7 @@ public final class TradingEngine: ObservableObject {
     @Published public var cachedPrices: [String: Double] = [:]
     @Published public var availableSymbols: [String] = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
     @Published public var lastMarketRefresh: Date = Date()
+    @Published public var selectedCurrency: AppCurrency = .usd
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
@@ -791,7 +792,7 @@ public final class TradingEngine: ObservableObject {
     }
 
     // Persistence
-    private func saveConfig() {
+    public func saveConfig() {
         let defaults = UserDefaults.standard
         defaults.set(apiKey, forKey: "monet_api_key")
         defaults.set(symbol, forKey: "monet_symbol")
@@ -809,6 +810,7 @@ public final class TradingEngine: ObservableObject {
         defaults.set(rsiOversold, forKey: "monet_rsi_oversold")
         defaults.set(rsiOverbought, forKey: "monet_rsi_overbought")
         defaults.set(useSimulator, forKey: "monet_use_simulator")
+        defaults.set(selectedCurrency.rawValue, forKey: "monet_selected_currency")
 
         // Save portfolio
         if let encodedPortfolio = try? JSONEncoder().encode(portfolio) {
@@ -837,6 +839,13 @@ public final class TradingEngine: ObservableObject {
         if tradeAmt == 0.0 { tradeAmt = 500.0 }
         startingWallet = defaults.double(forKey: "monet_wallet")
         if startingWallet == 0.0 { startingWallet = 10000.0 }
+        
+        if let currencyRaw = defaults.string(forKey: "monet_selected_currency"),
+           let currency = AppCurrency(rawValue: currencyRaw) {
+            selectedCurrency = currency
+        } else {
+            selectedCurrency = .usd
+        }
         
         // Load portfolio
         if let savedPortfolioData = defaults.data(forKey: "monet_portfolio"),
