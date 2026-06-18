@@ -6,6 +6,7 @@ struct PortfolioView: View {
     @State private var addFundsAmountText: String = ""
     @State private var showRemoveFundsAlert: Bool = false
     @State private var removeFundsAmountText: String = ""
+    @State private var selectedCoin: CoinModel? = nil
     
     private var netWorth: Double {
         var total = engine.portfolio.usd
@@ -136,38 +137,56 @@ struct PortfolioView: View {
                                 let price = engine.priceForSymbol(sym)
                                 let usdValue = qty * price
                                 
-                                HStack {
-                                    HStack(spacing: 10) {
-                                        Circle()
-                                            .fill(Color.orange.opacity(0.15))
-                                            .frame(width: 32, height: 32)
-                                            .overlay(
-                                                Text(sym.prefix(1))
-                                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                                                    .foregroundColor(.orange)
-                                            )
+                                Button(action: {
+                                    if let coin = engine.coins.first(where: { $0.symbol == sym }) {
+                                        selectedCoin = coin
+                                    } else {
+                                        selectedCoin = CoinModel(
+                                            symbol: sym,
+                                            name: sym,
+                                            price: price,
+                                            change24h: 0.0,
+                                            marketCap: 0.0,
+                                            volume24h: 0.0,
+                                            sparkline: [price]
+                                        )
+                                    }
+                                }) {
+                                    HStack {
+                                        HStack(spacing: 10) {
+                                            Circle()
+                                                .fill(Color.orange.opacity(0.15))
+                                                .frame(width: 32, height: 32)
+                                                .overlay(
+                                                    Text(sym.prefix(1))
+                                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                        .foregroundColor(.orange)
+                                                )
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(sym)
+                                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                                    .foregroundColor(.primary)
+                                                Text("\(String(format: "%.6f", qty)) \(sym)")
+                                                    .font(.system(size: 12, design: .monospaced))
+                                                    .foregroundColor(.gray)
+                                            }
+                                        }
                                         
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(sym)
-                                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                        Spacer()
+                                        
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            Text(engine.selectedCurrency.format(usdValue))
+                                                .font(.system(size: 15, weight: .bold, design: .monospaced))
                                                 .foregroundColor(.primary)
-                                            Text("\(String(format: "%.6f", qty)) \(sym)")
-                                                .font(.system(size: 12, design: .monospaced))
-                                                .foregroundColor(.gray)
+                                            Text(engine.selectedCurrency.format(price, decimalPlaces: price >= 1.0 ? 2 : 4))
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(.gray.opacity(0.8))
                                         }
                                     }
-                                    
-                                    Spacer()
-                                    
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text(engine.selectedCurrency.format(usdValue))
-                                            .font(.system(size: 15, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.primary)
-                                        Text(engine.selectedCurrency.format(price, decimalPlaces: price >= 1.0 ? 2 : 4))
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .foregroundColor(.gray.opacity(0.8))
-                                    }
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(ScaleButtonStyle())
                                 .padding(.vertical, 4)
                                 
                                 if sym != nonZeroHoldings.last {
@@ -247,6 +266,19 @@ struct PortfolioView: View {
             }
         } message: {
             Text("Enter the amount of \(engine.selectedCurrency.rawValue) you want to remove from your trading balance.")
+        }
+        .sheet(item: $selectedCoin) { coin in
+            CoinDetailView(coin: coin, engine: engine) { updatedCoin in
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                    engine.symbol = updatedCoin.symbol
+                    if engine.isRunning {
+                        engine.stop()
+                        engine.start()
+                    } else {
+                        engine.start()
+                    }
+                }
+            }
         }
     }
 }

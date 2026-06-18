@@ -1,16 +1,5 @@
 import SwiftUI
 
-struct CoinModel: Identifiable, Hashable {
-    let id = UUID()
-    let symbol: String
-    let name: String
-    var price: Double
-    var change24h: Double
-    var marketCap: Double // in billions
-    var volume24h: Double // in millions
-    var sparkline: [Double]
-}
-
 enum MarketFilter: String, CaseIterable {
     case all = "ALL"
     case gainers = "GAINERS"
@@ -18,12 +7,33 @@ enum MarketFilter: String, CaseIterable {
     case holdings = "HOLDINGS"
 }
 
+enum HomeSheetType: Identifiable {
+    case coin(CoinModel)
+    case sentiment
+    case volume
+    
+    var id: String {
+        switch self {
+        case .coin(let coin):
+            return "coin-\(coin.symbol)"
+        case .sentiment:
+            return "sentiment"
+        case .volume:
+            return "volume"
+        }
+    }
+}
+
 struct HomeView: View {
     @ObservedObject var engine: TradingEngine
-    @State private var coins: [CoinModel] = []
-    @State private var selectedCoin: CoinModel?
+    @State private var activeSheet: HomeSheetType?
     @State private var searchQuery: String = ""
     @State private var selectedFilter: MarketFilter = .all
+    
+    private var coins: [CoinModel] {
+        get { engine.coins }
+        nonmutating set { engine.coins = newValue }
+    }
     
     // Default base data to initialize
     private let initialCoins = [
@@ -79,17 +89,24 @@ struct HomeView: View {
                     }
                 }
             }
-            .sheet(item: $selectedCoin) { coin in
-                CoinDetailView(coin: coin, engine: engine) { updatedCoin in
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                        engine.symbol = updatedCoin.symbol
-                        if engine.isRunning {
-                            engine.stop()
-                            engine.start()
-                        } else {
-                            engine.start()
+            .sheet(item: $activeSheet) { sheetType in
+                switch sheetType {
+                case .coin(let coin):
+                    CoinDetailView(coin: coin, engine: engine) { updatedCoin in
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                            engine.symbol = updatedCoin.symbol
+                            if engine.isRunning {
+                                engine.stop()
+                                engine.start()
+                            } else {
+                                engine.start()
+                            }
                         }
                     }
+                case .sentiment:
+                    SentimentDetailView(coins: coins)
+                case .volume:
+                    VolumeDetailView(coins: coins, engine: engine)
                 }
             }
             .onAppear {
@@ -296,44 +313,70 @@ struct HomeView: View {
             HStack(spacing: 12) {
 
                 // Top Gainer
-                MarketSummaryCard(
-                    label: "TOP GAINER",
-                    icon: "arrow.up.right",
-                    iconColor: .positive,
-                    primary: topGainer?.symbol ?? "--",
-                    secondary: topGainer.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
-                    secondaryColor: .positive
-                )
+                Button(action: {
+                    if let coin = topGainer {
+                        activeSheet = .coin(coin)
+                    }
+                }) {
+                    MarketSummaryCard(
+                        label: "TOP GAINER",
+                        icon: "arrow.up.right",
+                        iconColor: .positive,
+                        primary: topGainer?.symbol ?? "--",
+                        secondary: topGainer.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
+                        secondaryColor: .positive
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .disabled(topGainer == nil)
 
                 // Top Loser
-                MarketSummaryCard(
-                    label: "TOP LOSER",
-                    icon: "arrow.down.right",
-                    iconColor: .negative,
-                    primary: topLoser?.symbol ?? "--",
-                    secondary: topLoser.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
-                    secondaryColor: .negative
-                )
+                Button(action: {
+                    if let coin = topLoser {
+                        activeSheet = .coin(coin)
+                    }
+                }) {
+                    MarketSummaryCard(
+                        label: "TOP LOSER",
+                        icon: "arrow.down.right",
+                        iconColor: .negative,
+                        primary: topLoser?.symbol ?? "--",
+                        secondary: topLoser.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
+                        secondaryColor: .negative
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .disabled(topLoser == nil)
 
-                // Gainers / Losers ratio
-                MarketSummaryCard(
-                    label: "SENTIMENT",
-                    icon: "chart.bar.fill",
-                    iconColor: gainersCount >= losersCount ? .positive : .negative,
-                    primary: "\(gainersCount)↑  \(losersCount)↓",
-                    secondary: coins.isEmpty ? "" : String(format: "%.0f%% up", Double(gainersCount) / Double(coins.count) * 100),
-                    secondaryColor: gainersCount >= losersCount ? .positive : .negative
-                )
+                // Gainers / Losers ratio (Sentiment)
+                Button(action: {
+                    activeSheet = .sentiment
+                }) {
+                    MarketSummaryCard(
+                        label: "SENTIMENT",
+                        icon: "chart.bar.fill",
+                        iconColor: gainersCount >= losersCount ? .positive : .negative,
+                        primary: "\(gainersCount)↑  \(losersCount)↓",
+                        secondary: coins.isEmpty ? "" : String(format: "%.0f%% up", Double(gainersCount) / Double(coins.count) * 100),
+                        secondaryColor: gainersCount >= losersCount ? .positive : .negative
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
 
                 // Total 24h Volume
-                MarketSummaryCard(
-                    label: "24H VOLUME",
-                    icon: "dollarsign.circle",
-                    iconColor: .accentTeal,
-                    primary: String(format: "$%.1fB", total24hVolume / 1000),
-                    secondary: String(format: "MCap $%.1fT", totalMarketCap / 1000),
-                    secondaryColor: .mutedLabel
-                )
+                Button(action: {
+                    activeSheet = .volume
+                }) {
+                    MarketSummaryCard(
+                        label: "24H VOLUME",
+                        icon: "dollarsign.circle",
+                        iconColor: .accentTeal,
+                        primary: String(format: "$%.1fB", total24hVolume / 1000),
+                        secondary: String(format: "MCap $%.1fT", totalMarketCap / 1000),
+                        secondaryColor: .mutedLabel
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
@@ -372,7 +415,7 @@ struct HomeView: View {
         VStack(spacing: 8) {
             ForEach(filteredCoins) { coin in
                 Button(action: {
-                    selectedCoin = coin
+                    activeSheet = .coin(coin)
                 }) {
                     HStack(spacing: 0) {
                         // Coin Icon & Info
@@ -679,4 +722,262 @@ struct MarketSummaryCard: View {
         .shadow(color: iconColor.opacity(0.08), radius: 10, x: 0, y: 4)
     }
 }
+
+// MARK: - Sentiment Detail View
+struct SentimentDetailView: View {
+    let coins: [CoinModel]
+    @Environment(\.dismiss) var dismiss
+    
+    private var gainers: [CoinModel] {
+        coins.filter { $0.change24h >= 0 }.sorted(by: { $0.change24h > $1.change24h })
+    }
+    
+    private var losers: [CoinModel] {
+        coins.filter { $0.change24h < 0 }.sorted(by: { $0.change24h < $1.change24h })
+    }
+    
+    private var gainerPercentage: Double {
+        coins.isEmpty ? 0 : (Double(gainers.count) / Double(coins.count)) * 100
+    }
+    
+    var body: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Title section
+                    VStack(spacing: 8) {
+                        Text("MARKET SENTIMENT")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.gray)
+                        
+                        Text(gainerPercentage >= 50 ? "BULLISH" : "BEARISH")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(gainerPercentage >= 50 ? .green : .red)
+                        
+                        Text("Based on price action of top \(coins.count) assets over the past 24 hours.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+                    .padding(.top, 20)
+                    
+                    // Visual progress bar
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("\(gainers.count) Gainers")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.green)
+                            Spacer()
+                            Text("\(losers.count) Losers")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.red)
+                        }
+                        
+                        GeometryReader { geo in
+                            HStack(spacing: 0) {
+                                Color.green
+                                    .frame(width: geo.size.width * CGFloat(gainerPercentage / 100))
+                                Color.red
+                                    .frame(width: geo.size.width * CGFloat((100 - gainerPercentage) / 100))
+                            }
+                            .cornerRadius(6)
+                        }
+                        .frame(height: 12)
+                        
+                        Text(String(format: "%.0f%% of assets are gaining", gainerPercentage))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.gray)
+                            .padding(.top, 4)
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
+                    
+                    // Lists of Gainers & Losers
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("TOP GAINERS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.green)
+                        
+                        VStack(spacing: 10) {
+                            ForEach(gainers.prefix(3)) { coin in
+                                HStack {
+                                    Text(coin.symbol)
+                                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    Text(coin.name)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    Text(String(format: "%+.2f%%", coin.change24h))
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(.green)
+                                }
+                                if coin != gainers.prefix(3).last {
+                                    Divider().background(Color.white.opacity(0.04))
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.green.opacity(0.03))
+                        .cornerRadius(12)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("TOP LOSERS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.red)
+                        
+                        VStack(spacing: 10) {
+                            ForEach(losers.prefix(3)) { coin in
+                                HStack {
+                                    Text(coin.symbol)
+                                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    Text(coin.name)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    Text(String(format: "%+.2f%%", coin.change24h))
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(.red)
+                                }
+                                if coin != losers.prefix(3).last {
+                                    Divider().background(Color.white.opacity(0.04))
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.red.opacity(0.03))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .background(GlassBackgroundView())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .font(.system(size: 15))
+                    .foregroundColor(.cyan)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Volume Detail View
+struct VolumeDetailView: View {
+    let coins: [CoinModel]
+    @ObservedObject var engine: TradingEngine
+    @Environment(\.dismiss) var dismiss
+    
+    private var sortedByVolume: [CoinModel] {
+        coins.sorted(by: { $0.volume24h > $1.volume24h })
+    }
+    
+    private var totalVolume: Double {
+        coins.reduce(0) { $0 + $1.volume24h }
+    }
+    
+    private var totalMarketCap: Double {
+        coins.reduce(0) { $0 + $1.marketCap }
+    }
+    
+    var body: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    VStack(spacing: 8) {
+                        Text("MARKET METRICS")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.gray)
+                        
+                        Text(String(format: "$%.1fB", totalVolume / 1000.0))
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(.cyan)
+                        
+                        Text("Total 24h Volume across all assets")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.top, 20)
+                    
+                    // Stats card
+                    VStack(spacing: 14) {
+                        MetricRow(title: "Total Market Capitalization", value: String(format: "$%.2fT", totalMarketCap / 1000.0), valueColor: .primary)
+                        MetricRow(title: "Total 24h Trading Volume", value: String(format: "$%.2fB", totalVolume / 1000.0), valueColor: .cyan)
+                        MetricRow(title: "Assets Tracked", value: "\(coins.count)", valueColor: .primary)
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
+                    
+                    // List of assets by volume
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("VOLUME BREAKDOWN")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.gray)
+                        
+                        VStack(spacing: 12) {
+                            ForEach(sortedByVolume.prefix(5)) { coin in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(coin.symbol)
+                                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                        Text(coin.name)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(String(format: "$%.1fM", coin.volume24h))
+                                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                        let contribution = totalVolume > 0 ? (coin.volume24h / totalVolume) * 100.0 : 0.0
+                                        Text(String(format: "%.1f%% of total", contribution))
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                if coin != sortedByVolume.prefix(5).last {
+                                    Divider().background(Color.white.opacity(0.04))
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .background(Color.white.opacity(0.015))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.03), lineWidth: 0.5)
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .background(GlassBackgroundView())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .font(.system(size: 15))
+                    .foregroundColor(.cyan)
+                }
+            }
+        }
+    }
+}
+
 

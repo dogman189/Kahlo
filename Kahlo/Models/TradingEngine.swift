@@ -30,6 +30,7 @@ public final class TradingEngine: ObservableObject {
     @Published public var availableSymbols: [String] = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
     @Published public var lastMarketRefresh: Date = Date()
     @Published public var selectedCurrency: AppCurrency = .usd
+    @Published public var coins: [CoinModel] = []
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
