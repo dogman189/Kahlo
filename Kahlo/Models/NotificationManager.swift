@@ -100,4 +100,22 @@ public final class NotificationManager {
             }
         }
     }
+
+    /// Send custom price alert notification.
+    public func sendPriceAlertNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        
+        let identifier = "KahloAlert-\(UUID().uuidString)"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error posting alert notification: \(error.localizedDescription)")
+            }
+        }
+    }
 }

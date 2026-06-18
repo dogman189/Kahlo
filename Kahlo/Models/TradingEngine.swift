@@ -30,7 +30,14 @@ public final class TradingEngine: ObservableObject {
     @Published public var availableSymbols: [String] = ["BTC", "ETH", "SOL", "ADA", "DOT", "LINK", "DOGE"]
     @Published public var lastMarketRefresh: Date = Date()
     @Published public var selectedCurrency: AppCurrency = .usd
-    @Published public var coins: [CoinModel] = []
+    @Published public var priceAlerts: [PriceAlert] = []
+    @Published public var coins: [CoinModel] = [] {
+        didSet {
+            for coin in coins {
+                checkPriceAlerts(symbol: coin.symbol, price: coin.price, change24h: coin.change24h)
+            }
+        }
+    }
 
     // Market / Indicators state
     @Published public var price: Double = 0.0
@@ -828,6 +835,11 @@ public final class TradingEngine: ObservableObject {
         defaults.set(totalBuys, forKey: "monet_total_buys")
         defaults.set(totalSells, forKey: "monet_total_sells")
         defaults.set(stopLossesHit, forKey: "monet_stop_losses_hit")
+        
+        // Save price alerts
+        if let encodedAlerts = try? JSONEncoder().encode(priceAlerts) {
+            defaults.set(encodedAlerts, forKey: "monet_price_alerts")
+        }
     }
 
     private func loadConfig() {
@@ -854,6 +866,14 @@ public final class TradingEngine: ObservableObject {
             portfolio = decodedPortfolio
         } else {
             portfolio = Portfolio(usd: startingWallet, holdings: [:])
+        }
+        
+        // Load price alerts
+        if let savedAlertsData = defaults.data(forKey: "monet_price_alerts"),
+           let decodedAlerts = try? JSONDecoder().decode([PriceAlert].self, from: savedAlertsData) {
+            priceAlerts = decodedAlerts
+        } else {
+            priceAlerts = []
         }
 
         // Load avgBuyPrice
@@ -1044,6 +1064,49 @@ public final class TradingEngine: ObservableObject {
         self.cachedPrices = updatedCachedPrices
         self.availableSymbols = symbolsList
         return list
+    }
+
+    public func checkPriceAlerts(symbol: String, price: Double, change24h: Double) {
+        for i in 0..<priceAlerts.count {
+            let alert = priceAlerts[i]
+            guard alert.isActive && alert.symbol.uppercased() == symbol.uppercased() else { continue }
+            
+            var triggered = false
+            var message = ""
+            
+            switch alert.type {
+            case .priceAbove:
+                if price >= alert.targetValue {
+                    triggered = true
+                    message = "\(symbol) went ABOVE \(selectedCurrency.format(alert.targetValue)) (Current: \(selectedCurrency.format(price)))"
+                }
+            case .priceBelow:
+                if price <= alert.targetValue {
+                    triggered = true
+                    message = "\(symbol) went BELOW \(selectedCurrency.format(alert.targetValue)) (Current: \(selectedCurrency.format(price)))"
+                }
+            case .changeAbove:
+                if change24h >= alert.targetValue {
+                    triggered = true
+                    message = "\(symbol) 24h change went ABOVE \(String(format: "%.2f%%", alert.targetValue)) (Current: \(String(format: "%+.2f%%", change24h)))"
+                }
+            case .changeBelow:
+                if change24h <= alert.targetValue {
+                    triggered = true
+                    message = "\(symbol) 24h change went BELOW \(String(format: "%.2f%%", alert.targetValue)) (Current: \(String(format: "%+.2f%%", change24h)))"
+                }
+            }
+            
+            if triggered {
+                priceAlerts[i].isActive = false
+                saveConfig()
+                NotificationManager.shared.sendPriceAlertNotification(
+                    title: "🚨 Price Alert: \(symbol)",
+                    body: message
+                )
+                log("Alert Triggered: \(message)")
+            }
+        }
     }
 }
 

@@ -551,6 +551,9 @@ struct CoinDetailView: View {
     @ObservedObject var engine: TradingEngine
     @Environment(\.dismiss) var dismiss
     
+    @State private var alertType: PriceAlert.AlertType = .priceAbove
+    @State private var alertValueText: String = ""
+    
     var onSelectTrading: (CoinModel) -> Void
     
     var body: some View {
@@ -602,6 +605,142 @@ struct CoinDetailView: View {
                             .stroke(Color.white.opacity(0.04), lineWidth: 1)
                     )
                     
+                    // Price Alerts Section
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Text("PRICE ALERTS")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.gray)
+                            Spacer()
+                        }
+                        
+                        Divider().background(Color.white.opacity(0.06))
+                        
+                        let coinAlerts = engine.priceAlerts.filter { $0.symbol.uppercased() == coin.symbol.uppercased() }
+                        
+                        if coinAlerts.isEmpty {
+                            Text("No alerts configured for \(coin.symbol)")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                                .padding(.vertical, 4)
+                        } else {
+                            ForEach(coinAlerts) { alert in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(alert.type.rawValue)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.primary)
+                                        
+                                        if alert.type == .priceAbove || alert.type == .priceBelow {
+                                            Text(engine.selectedCurrency.format(alert.targetValue))
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(.gray)
+                                        } else {
+                                            Text(String(format: "%+.2f%%", alert.targetValue))
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if !alert.isActive {
+                                        Text("FIRED")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.gray)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.gray.opacity(0.15))
+                                            .cornerRadius(4)
+                                    }
+                                    
+                                    Button(action: {
+                                        if let idx = engine.priceAlerts.firstIndex(where: { $0.id == alert.id }) {
+                                            engine.priceAlerts.remove(at: idx)
+                                            engine.saveConfig()
+                                        }
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.red)
+                                    }
+                                    .buttonStyle(BorderlessButtonStyle())
+                                }
+                                if alert.id != coinAlerts.last?.id {
+                                    Divider().background(Color.white.opacity(0.04))
+                                }
+                            }
+                        }
+                        
+                        // Add Alert form
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("CREATE ALERT")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(.cyan)
+                                .padding(.top, 4)
+                            
+                            Picker("Type", selection: $alertType) {
+                                ForEach(PriceAlert.AlertType.allCases, id: \.self) { type in
+                                    Text(type.rawValue).tag(type)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .font(.system(size: 13))
+                            .tint(.cyan)
+                            
+                            HStack {
+                                TextField("Target Value", text: $alertValueText)
+                                    .keyboardType(.decimalPad)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .textFieldStyle(.plain)
+                                    .padding(8)
+                                    .background(Color.black.opacity(0.2))
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                                    )
+                                
+                                Button(action: {
+                                    if let val = Double(alertValueText), val > 0 {
+                                        let newAlert = PriceAlert(
+                                            symbol: coin.symbol,
+                                            type: alertType,
+                                            targetValue: val,
+                                            isActive: true
+                                        )
+                                        engine.priceAlerts.append(newAlert)
+                                        engine.saveConfig()
+                                        alertValueText = ""
+                                    }
+                                }) {
+                                    Text("Add")
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Color.cyan)
+                                        .cornerRadius(6)
+                                }
+                                .disabled(alertValueText.isEmpty)
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.white.opacity(0.01))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.03), lineWidth: 0.5)
+                        )
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
+
                     // Action controls
                     VStack {
                         if engine.symbol == coin.symbol {
