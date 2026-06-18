@@ -42,7 +42,7 @@ struct HomeView: View {
                 VStack(spacing: 20) {
                     
                     // MARK: - Market Stats Overview
-                    marketOverviewSection
+                    marketSummaryCardsSection
                     
                     // MARK: - Search Field
                     searchBarSection
@@ -65,7 +65,7 @@ struct HomeView: View {
                         .font(.system(.subheadline, design: .monospaced))
                         .bold()
                         .tracking(3)
-                        .foregroundColor(.cyan)
+                        .foregroundColor(.accentTeal)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -75,7 +75,7 @@ struct HomeView: View {
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.cyan)
+                            .foregroundColor(.accentTeal)
                     }
                 }
             }
@@ -262,32 +262,82 @@ struct HomeView: View {
     }
     
     // MARK: - View Components
-    
-    private var marketOverviewSection: some View {
-        let topMover = coins.max(by: { $0.change24h < $1.change24h })
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("TOP GAINER")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.gray)
-            
-            HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(topMover?.symbol ?? "--")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                Text(String(format: "%+.2f%%", topMover?.change24h ?? 0.0))
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor((topMover?.change24h ?? 0.0) >= 0.0 ? .green : .red)
+
+    // MARK: - Summary Card Helpers
+
+    private var topGainer: CoinModel? {
+        coins.max(by: { $0.change24h < $1.change24h })
+    }
+
+    private var topLoser: CoinModel? {
+        coins.min(by: { $0.change24h < $1.change24h })
+    }
+
+    private var gainersCount: Int {
+        coins.filter { $0.change24h >= 0 }.count
+    }
+
+    private var losersCount: Int {
+        coins.filter { $0.change24h < 0 }.count
+    }
+
+    private var total24hVolume: Double {
+        coins.reduce(0) { $0 + $1.volume24h }
+    }
+
+    private var totalMarketCap: Double {
+        coins.reduce(0) { $0 + $1.marketCap }
+    }
+
+    // MARK: - Market Summary Cards
+
+    private var marketSummaryCardsSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+
+                // Top Gainer
+                MarketSummaryCard(
+                    label: "TOP GAINER",
+                    icon: "arrow.up.right",
+                    iconColor: .positive,
+                    primary: topGainer?.symbol ?? "--",
+                    secondary: topGainer.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
+                    secondaryColor: .positive
+                )
+
+                // Top Loser
+                MarketSummaryCard(
+                    label: "TOP LOSER",
+                    icon: "arrow.down.right",
+                    iconColor: .negative,
+                    primary: topLoser?.symbol ?? "--",
+                    secondary: topLoser.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
+                    secondaryColor: .negative
+                )
+
+                // Gainers / Losers ratio
+                MarketSummaryCard(
+                    label: "SENTIMENT",
+                    icon: "chart.bar.fill",
+                    iconColor: gainersCount >= losersCount ? .positive : .negative,
+                    primary: "\(gainersCount)↑  \(losersCount)↓",
+                    secondary: coins.isEmpty ? "" : String(format: "%.0f%% up", Double(gainersCount) / Double(coins.count) * 100),
+                    secondaryColor: gainersCount >= losersCount ? .positive : .negative
+                )
+
+                // Total 24h Volume
+                MarketSummaryCard(
+                    label: "24H VOLUME",
+                    icon: "dollarsign.circle",
+                    iconColor: .accentTeal,
+                    primary: String(format: "$%.1fB", total24hVolume / 1000),
+                    secondary: String(format: "MCap $%.1fT", totalMarketCap / 1000),
+                    secondaryColor: .mutedLabel
+                )
             }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
-        )
         .padding(.top, 8)
     }
     
@@ -578,3 +628,55 @@ struct MetricRow: View {
         }
     }
 }
+
+// MARK: - Market Summary Card
+
+struct MarketSummaryCard: View {
+    let label: String
+    let icon: String
+    let iconColor: Color
+    let primary: String
+    let secondary: String
+    var secondaryColor: Color = .mutedLabel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Label + icon row
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(iconColor)
+                Text(label)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(.mutedLabel)
+                    .tracking(0.8)
+            }
+
+            // Primary value
+            Text(primary)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            // Secondary value / subtitle
+            if !secondary.isEmpty {
+                Text(secondary)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(secondaryColor)
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(width: 140, alignment: .leading)
+        .background(.ultraThinMaterial)
+        .background(Color.white.opacity(0.025))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(iconColor.opacity(0.15), lineWidth: 0.5)
+        )
+        .shadow(color: iconColor.opacity(0.08), radius: 10, x: 0, y: 4)
+    }
+}
+
