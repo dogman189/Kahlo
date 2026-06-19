@@ -27,7 +27,7 @@ struct PortfolioView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: DesignConstant.spacingLg) {
                 HStack {
                     Text("PORTFOLIO")
                         .font(.system(.title2, design: .rounded))
@@ -37,6 +37,7 @@ struct PortfolioView: View {
                 }
                 .padding(.top, 10)
                 
+                // Net Worth Card
                 VStack(spacing: 16) {
                     Text("Total Net Worth")
                         .font(.subheadline)
@@ -45,6 +46,8 @@ struct PortfolioView: View {
                     Text(engine.selectedCurrency.format(netWorth))
                         .font(.system(size: 46, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: netWorth)
                     
                     HStack(spacing: 8) {
                         Image(systemName: pnlUsd >= 0 ? "arrow.up.right" : "arrow.down.right")
@@ -108,7 +111,7 @@ struct PortfolioView: View {
                 .glassPanel()
                 
                 // Asset Holdings Section
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: DesignConstant.spacingMd) {
                     Text("ASSET HOLDINGS")
                         .font(.system(.caption, design: .monospaced))
                         .bold()
@@ -127,7 +130,7 @@ struct PortfolioView: View {
                                     .font(.system(size: 13))
                                     .foregroundColor(.gray)
                             }
-                            .padding(.vertical, 12)
+                            .padding(.vertical, DesignConstant.spacingSm)
                             Spacer()
                         }
                     } else {
@@ -138,6 +141,7 @@ struct PortfolioView: View {
                                 let usdValue = qty * price
                                 
                                 Button(action: {
+                                    HapticManager.light()
                                     if let coin = engine.coins.first(where: { $0.symbol == sym }) {
                                         selectedCoin = coin
                                     } else {
@@ -200,7 +204,7 @@ struct PortfolioView: View {
                 .glassPanel()
                 
                 // Trade Statistics
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: DesignConstant.spacingMd) {
                     Text("PERFORMANCE STATS")
                         .font(.system(.caption, design: .monospaced))
                         .bold()
@@ -212,8 +216,7 @@ struct PortfolioView: View {
                         StatBox(title: "Total Sells", value: "\(engine.totalSells)", color: .red)
                         StatBox(title: "Stops Hit", value: "\(engine.stopLossesHit)", color: .orange)
                     }
-                    .background(Color.black.opacity(0.3))
-                    .cornerRadius(12)
+                    .glassPanel()
                     
                     if let avgPrice = engine.avgBuyPrice, (engine.portfolio.holdings[engine.symbol] ?? 0.0) > 0 {
                         HStack {
@@ -233,8 +236,6 @@ struct PortfolioView: View {
                 .glassPanel()
             }
             .padding(.horizontal)
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: netWorth)
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: engine.totalTrades)
         }
         .background(GlassBackgroundView())
         .alert("Add Funds", isPresented: $showAddFundsAlert) {
@@ -299,7 +300,7 @@ struct StatBox: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(.vertical, DesignConstant.spacingMd)
     }
 }
 

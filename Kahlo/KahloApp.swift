@@ -15,9 +15,14 @@ struct KahloApp: App {
     @StateObject private var engine = TradingEngine()
 
     init() {
-        // Background task handlers MUST be registered before the first
-        // runloop iteration completes, so we do it here in init().
         BackgroundTaskManager.shared.registerTasks()
+
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = UIColor.clear
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().isHidden = true
     }
 
     var body: some Scene {

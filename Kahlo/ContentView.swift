@@ -26,6 +26,10 @@ enum Tab: String, CaseIterable {
         case .settings: return "gearshape.fill"
         }
     }
+
+    var selectedIcon: String {
+        icon
+    }
 }
 
 struct ContentView: View {
@@ -57,63 +61,15 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            if showTabMarkets {
-                HomeView(engine: engine)
-                    .tabItem {
-                        Label(Tab.markets.label, systemImage: Tab.markets.icon)
-                    }
-                    .tag(Tab.markets)
-            }
+        ZStack(alignment: .bottom) {
+            tabContent
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Color.clear.frame(height: 48)
+                }
 
-            if showTabTrade {
-                TradeView(engine: engine)
-                    .tabItem {
-                        Label(Tab.trade.label, systemImage: Tab.trade.icon)
-                    }
-                    .tag(Tab.trade)
-            }
-
-            if showTabTerminal {
-                MonitorView(engine: engine)
-                    .tabItem {
-                        Label(Tab.terminal.label, systemImage: Tab.terminal.icon)
-                    }
-                    .tag(Tab.terminal)
-            }
-
-            if showTabBrain {
-                BrainView(engine: engine)
-                    .tabItem {
-                        Label(Tab.brain.label, systemImage: Tab.brain.icon)
-                    }
-                    .tag(Tab.brain)
-            }
-
-            if showTabReport {
-                ReportView(engine: engine)
-                    .tabItem {
-                        Label(Tab.report.label, systemImage: Tab.report.icon)
-                    }
-                    .tag(Tab.report)
-            }
-
-            if showTabPortfolio {
-                PortfolioView(engine: engine)
-                    .tabItem {
-                        Label(Tab.portfolio.label, systemImage: Tab.portfolio.icon)
-                    }
-                    .tag(Tab.portfolio)
-            }
-
-            if showTabSettings {
-                SettingsView(engine: engine)
-                    .tabItem {
-                        Label(Tab.settings.label, systemImage: Tab.settings.icon)
-                    }
-                    .tag(Tab.settings)
-            }
+            customTabBar
         }
+        .ignoresSafeArea(.keyboard)
         .accentColor(.cyan)
         .preferredColorScheme(isDarkMode ? .dark : .light)
         .onAppear {
@@ -147,18 +103,98 @@ struct ContentView: View {
         )
     }
 
+    // MARK: - Tab Content
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .markets:
+            HomeView(engine: engine)
+        case .trade:
+            TradeView(engine: engine)
+        case .terminal:
+            MonitorView(engine: engine)
+        case .brain:
+            BrainView(engine: engine)
+        case .report:
+            ReportView(engine: engine)
+        case .portfolio:
+            PortfolioView(engine: engine)
+        case .settings:
+            SettingsView(engine: engine)
+        }
+    }
+
+    // MARK: - Custom Tab Bar
+
+    private var customTabBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .frame(height: 0.5)
+                .background(Color.white.opacity(0.06))
+
+            HStack(spacing: 0) {
+                ForEach(visibleTabs, id: \.self) { tab in
+                    Button(action: {
+                        HapticManager.light()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            selectedTab = tab
+                        }
+                    }) {
+                        VStack(spacing: 3) {
+                            ZStack {
+                                if selectedTab == tab {
+                                    Capsule()
+                                        .fill(Color.cyan.opacity(0.15))
+                                        .frame(width: 32, height: 22)
+                                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                                }
+                                Image(systemName: selectedTab == tab ? tab.selectedIcon : tab.icon)
+                                    .font(.system(size: 18, weight: selectedTab == tab ? .bold : .regular))
+                                    .foregroundColor(selectedTab == tab ? .cyan : .gray.opacity(0.6))
+                            }
+
+                            Text(tab.label)
+                                .font(.system(size: 9, weight: selectedTab == tab ? .bold : .medium, design: .monospaced))
+                                .foregroundColor(selectedTab == tab ? .cyan : .gray.opacity(0.6))
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 0)
+            .background(
+                .ultraThinMaterial
+            )
+            .background(Color.tabBarBg.opacity(0.85))
+        }
+    }
+
+    // MARK: - Navigation
+
     private func moveToNextTab() {
         let tabs = visibleTabs
         guard let currentIndex = tabs.firstIndex(of: selectedTab),
               currentIndex + 1 < tabs.count else { return }
-        withAnimation { selectedTab = tabs[currentIndex + 1] }
+        HapticManager.light()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            selectedTab = tabs[currentIndex + 1]
+        }
     }
 
     private func moveToPreviousTab() {
         let tabs = visibleTabs
         guard let currentIndex = tabs.firstIndex(of: selectedTab),
               currentIndex - 1 >= 0 else { return }
-        withAnimation { selectedTab = tabs[currentIndex - 1] }
+        HapticManager.light()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            selectedTab = tabs[currentIndex - 1]
+        }
     }
 }
 

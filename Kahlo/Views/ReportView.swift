@@ -8,7 +8,7 @@ struct ReportView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: DesignConstant.spacingLg) {
                 headerSection
                 marketSummary
                 sentimentAnalysis
@@ -47,7 +47,7 @@ struct ReportView: View {
     // MARK: - Market Summary
 
     private var marketSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "MARKET SUMMARY")
 
             let totalCap = coins.reduce(0.0) { $0 + $1.marketCap }
@@ -108,7 +108,7 @@ struct ReportView: View {
     // MARK: - Sentiment Analysis
 
     private var sentimentAnalysis: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "MARKET SENTIMENT")
 
             let gainers = coins.filter { $0.change24h > 0 }
@@ -119,15 +119,14 @@ struct ReportView: View {
             let avgGainer = gainers.isEmpty ? 0 : gainers.reduce(0.0) { $0 + $1.change24h } / Double(gainers.count)
             let avgLoser = losers.isEmpty ? 0 : losers.reduce(0.0) { $0 + $1.change24h } / Double(losers.count)
 
-            // Sentiment bar
             VStack(spacing: 6) {
                 GeometryReader { geo in
                     HStack(spacing: 0) {
                         Rectangle()
-                            .fill(Color.positive)
+                            .fill(LinearGradient.positiveGradient)
                             .frame(width: geo.size.width * CGFloat(bullishPct / 100))
                         Rectangle()
-                            .fill(Color.negative)
+                            .fill(LinearGradient.negativeGradient)
                             .frame(width: geo.size.width * CGFloat(bearishPct / 100))
                     }
                     .cornerRadius(4)
@@ -193,7 +192,7 @@ struct ReportView: View {
     // MARK: - Top Gainers
 
     private var topGainersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "TOP GAINERS (24H)")
 
             let gainers = coins.filter { $0.change24h > 0 }.sorted { $0.change24h > $1.change24h }
@@ -214,7 +213,7 @@ struct ReportView: View {
     // MARK: - Top Losers
 
     private var topLosersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "TOP LOSERS (24H)")
 
             let losers = coins.filter { $0.change24h < 0 }.sorted { $0.change24h < $1.change24h }
@@ -235,7 +234,7 @@ struct ReportView: View {
     // MARK: - Volume Leaders
 
     private var volumeLeadersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "VOLUME LEADERS (24H)")
 
             let byVolume = coins.sorted { $0.volume24h > $1.volume24h }
@@ -277,7 +276,7 @@ struct ReportView: View {
     // MARK: - Market Cap Distribution
 
     private var marketCapSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "MARKET CAP DISTRIBUTION")
 
             let totalCap = coins.reduce(0.0) { $0 + $1.marketCap }
@@ -347,7 +346,7 @@ struct ReportView: View {
     // MARK: - Price Watch
 
     private var priceWatchSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "PRICE WATCH")
 
             let sortedByPrice = coins.sorted { $0.price > $1.price }
@@ -399,7 +398,7 @@ struct ReportView: View {
     // MARK: - Market Health
 
     private var marketHealthSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
             SectionLabel(text: "MARKET HEALTH")
 
             let gainers = coins.filter { $0.change24h > 0 }
@@ -428,6 +427,7 @@ struct ReportView: View {
                         .stroke(healthColor(healthScore), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .frame(width: 60, height: 60)
                         .rotationEffect(.degrees(-90))
+                        .animation(.spring(response: 0.6, dampingFraction: 0.75), value: healthScore)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -503,22 +503,13 @@ struct ReportView: View {
 
     private func computeHealthScore(bullishPct: Double, avgChange: Double, volToCapRatio: Double, totalAssets: Int) -> Double {
         var score = 50.0
-
-        // Sentiment contribution (0-30 points)
         score += (bullishPct - 50) * 0.6
-
-        // Momentum contribution (0-30 points)
         score += max(-15, min(15, avgChange * 3))
-
-        // Liquidity contribution (0-20 points)
         if volToCapRatio > 0.05 { score += 10 }
         else if volToCapRatio > 0.02 { score += 5 }
-
-        // Diversity contribution (0-20 points)
         if totalAssets >= 20 { score += 15 }
         else if totalAssets >= 10 { score += 10 }
         else if totalAssets >= 5 { score += 5 }
-
         return max(0, min(100, score))
     }
 
@@ -541,7 +532,7 @@ struct ReportView: View {
 
         if bullishPct > 60 {
             parts.append("The market is predominantly bullish with \(String(format: "%.0f", bullishPct))% of assets in positive territory.")
-        } else if bearishPct > 60 {
+        } else if losersCount > gainersCount {
             let bearishPct = 100 - bullishPct
             parts.append("Bearish sentiment dominates with \(String(format: "%.0f", bearishPct))% of assets declining.")
         } else {

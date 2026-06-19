@@ -23,6 +23,28 @@ extension Color {
     static let subtleBorder = Color.white.opacity(0.07)
     /// Faint background fill
     static let faintFill = Color.white.opacity(0.025)
+    /// Card border stroke
+    static let cardStroke = Color.white.opacity(0.10)
+    /// Glass highlight edge
+    static let glassHighlight = Color.white.opacity(0.08)
+    /// Tab bar background
+    static let tabBarBg = Color(red: 10/255, green: 14/255, blue: 28/255)
+}
+
+// MARK: - Shadow Presets
+
+extension View {
+    func shadowSm() -> some View {
+        self.shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+    }
+
+    func shadowMd() -> some View {
+        self.shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 8)
+    }
+
+    func shadowLg() -> some View {
+        self.shadow(color: Color.black.opacity(0.45), radius: 24, x: 0, y: 12)
+    }
 }
 
 // MARK: - Typography Helpers
@@ -40,6 +62,20 @@ extension Font {
     static let monoSmall = Font.system(size: 11, weight: .medium, design: .monospaced)
     /// Pill/badge text
     static let pillText = Font.system(size: 9, weight: .bold, design: .monospaced)
+}
+
+// MARK: - Design Constants
+
+enum DesignConstant {
+    static let cornerRadiusSm: CGFloat = 10
+    static let cornerRadiusMd: CGFloat = 16
+    static let cornerRadiusLg: CGFloat = 20
+    static let paddingSm: CGFloat = 12
+    static let paddingMd: CGFloat = 16
+    static let paddingLg: CGFloat = 24
+    static let spacingSm: CGFloat = 8
+    static let spacingMd: CGFloat = 16
+    static let spacingLg: CGFloat = 24
 }
 
 // MARK: - Section Header View
@@ -76,4 +112,17 @@ extension LinearGradient {
         startPoint: .leading,
         endPoint: .trailing
     )
+}
+
+// MARK: - Glow Effect
+
+extension View {
+    func glow(color: Color, radius: CGFloat = 10) -> some View {
+        self.overlay(
+            self
+                .blur(radius: radius)
+                .opacity(0.4)
+        )
+        .shadow(color: color.opacity(0.3), radius: radius)
+    }
 }
