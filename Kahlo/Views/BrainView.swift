@@ -120,6 +120,11 @@ struct BrainView: View {
                 }
                 .padding()
                 .glassPanel()
+                
+                // Local LLM Analysis
+                LLMAnalysisView(llm: engine.llmService)
+                    .padding()
+                    .glassPanel()
             }
             .padding(.horizontal)
         }

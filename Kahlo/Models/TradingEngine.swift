@@ -75,6 +75,10 @@ public final class TradingEngine: ObservableObject {
     @Published public var nnLayerNorms: [Double] = []
     @Published public var nnActivations: [[Double]] = []
 
+    // Local LLM
+    @Published public var llmService = LLMService()
+    @Published public var useLLM: Bool = false
+
     // Historical tracking (max 50)
     @Published public var history: [HistoryPoint] = []
     @Published public var logs: [String] = []
@@ -432,6 +436,49 @@ public final class TradingEngine: ObservableObject {
 
         let predStr = String(format: "%+.4f", pred)
         log("Signal: $\(String(format: "%.2f", priceFetched)) | RSI=\(String(format: "%.1f", currentRsi)) | NN output: \(predStr) (Acc: \(String(format: "%.1f", aiAccuracyScore))%)")
+
+        // 3. Local LLM Analysis
+        if useLLM {
+            let bbPos: String
+            if lowerComputed.map({ priceFetched <= $0 }) ?? false {
+                bbPos = "below lower band"
+            } else if upperComputed.map({ priceFetched >= $0 }) ?? false {
+                bbPos = "above upper band"
+            } else {
+                bbPos = "within bands"
+            }
+            let momentum = priceHistory.count >= 6
+                ? ((priceFetched - priceHistory[priceHistory.count - 6]) / priceHistory[priceHistory.count - 6]) * 100.0
+                : 0.0
+            let volatility: Double? = {
+                guard priceHistory.count >= 11 else { return nil }
+                var returns: [Double] = []
+                for i in stride(from: priceHistory.count - 10, to: priceHistory.count, by: 1) {
+                    let pp = priceHistory[i - 1]
+                    let pc = priceHistory[i]
+                    if pp != 0 { returns.append(((pc - pp) / pp) * 100.0) }
+                }
+                guard returns.count >= 2 else { return returns.first.map(abs) }
+                let m = returns.reduce(0.0, +) / Double(returns.count)
+                let v = returns.map { pow($0 - m, 2) }.reduce(0.0, +) / Double(returns.count - 1)
+                return sqrt(v)
+            }()
+
+            llmService.analyzeMarket(
+                symbol: symbol,
+                price: priceFetched,
+                rsi: currentRsi,
+                bbPosition: bbPos,
+                bandwidth: bandwidthComputed,
+                momentum: momentum,
+                volatility: volatility,
+                prediction: pred,
+                accuracy: aiAccuracyScore,
+                portfolioUSD: portfolio.usd,
+                holdings: portfolio.holdings,
+                avgBuyPrice: avgBuyPrice
+            )
+        }
 
         // Trailing calculations / Cooldown & Risk
         let intervalsSinceTrade = intervalCount - lastTradeInterval
@@ -840,6 +887,8 @@ public final class TradingEngine: ObservableObject {
         if let encodedAlerts = try? JSONEncoder().encode(priceAlerts) {
             defaults.set(encodedAlerts, forKey: "monet_price_alerts")
         }
+
+        defaults.set(useLLM, forKey: "monet_use_llm")
     }
 
     private func loadConfig() {
@@ -911,6 +960,13 @@ public final class TradingEngine: ObservableObject {
         if defaults.object(forKey: "monet_use_simulator") != nil {
             useSimulator = defaults.bool(forKey: "monet_use_simulator")
         }
+
+        useLLM = defaults.bool(forKey: "monet_use_llm")
+        syncLLMConfig()
+    }
+
+    public func syncLLMConfig() {
+        llmService.isEnabled = useLLM
     }
 
     public func fetchTop100Coins() async -> [CMCListingCoin]? {

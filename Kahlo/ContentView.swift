@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Tab: String, CaseIterable {
-    case markets, trade, terminal, brain, portfolio, settings
+    case markets, trade, terminal, brain, report, portfolio, settings
 
     var label: String {
         switch self {
@@ -9,6 +9,7 @@ enum Tab: String, CaseIterable {
         case .trade: return "Trade"
         case .terminal: return "Terminal"
         case .brain: return "AI Brain"
+        case .report: return "AI Report"
         case .portfolio: return "Portfolio"
         case .settings: return "Settings"
         }
@@ -20,6 +21,7 @@ enum Tab: String, CaseIterable {
         case .trade: return "arrow.left.arrow.right.circle.fill"
         case .terminal: return "terminal.fill"
         case .brain: return "brain"
+        case .report: return "doc.text.magnifyingglass"
         case .portfolio: return "chart.pie.fill"
         case .settings: return "gearshape.fill"
         }
@@ -34,6 +36,7 @@ struct ContentView: View {
     @AppStorage("showTabTrade") private var showTabTrade = true
     @AppStorage("showTabTerminal") private var showTabTerminal = true
     @AppStorage("showTabBrain") private var showTabBrain = true
+    @AppStorage("showTabReport") private var showTabReport = true
     @AppStorage("showTabPortfolio") private var showTabPortfolio = true
     @AppStorage("showTabSettings") private var showTabSettings = true
 
@@ -46,6 +49,7 @@ struct ContentView: View {
             case .trade: return showTabTrade
             case .terminal: return showTabTerminal
             case .brain: return showTabBrain
+            case .report: return showTabReport
             case .portfolio: return showTabPortfolio
             case .settings: return showTabSettings
             }
@@ -84,6 +88,14 @@ struct ContentView: View {
                         Label(Tab.brain.label, systemImage: Tab.brain.icon)
                     }
                     .tag(Tab.brain)
+            }
+
+            if showTabReport {
+                ReportView(engine: engine)
+                    .tabItem {
+                        Label(Tab.report.label, systemImage: Tab.report.icon)
+                    }
+                    .tag(Tab.report)
             }
 
             if showTabPortfolio {
