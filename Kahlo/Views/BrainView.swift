@@ -5,7 +5,7 @@ struct BrainView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: DesignConstant.spacingLg) {
+            VStack(spacing: 24) {
                 // Header
                 HStack {
                     Text("AI BRAIN & FORECAST")
@@ -34,7 +34,6 @@ struct BrainView: View {
                         Text(String(format: "%+.4f", engine.aiPrediction))
                             .font(.system(size: 32, weight: .bold, design: .monospaced))
                             .foregroundColor(engine.aiPrediction > 0.05 ? .green : (engine.aiPrediction < -0.05 ? .red : .gray))
-                            .glow(color: engine.aiPrediction > 0.05 ? .green : (engine.aiPrediction < -0.05 ? .red : .clear), radius: 6)
                         
                         Text(engine.aiPrediction > 0.05 ? "BULLISH" : (engine.aiPrediction < -0.05 ? "BEARISH" : "NEUTRAL"))
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -66,7 +65,7 @@ struct BrainView: View {
                 .glassPanel()
                 
                 // Neural Network Graph
-                VStack(alignment: .leading, spacing: DesignConstant.spacingMd) {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack {
                         Text("NETWORK TOPOLOGY")
                             .font(.system(.caption, design: .monospaced))
@@ -85,19 +84,14 @@ struct BrainView: View {
                     )
                     .frame(height: 280)
                     .padding()
-                    .background(.ultraThinMaterial)
-                    .background(Color.black.opacity(0.35))
-                    .cornerRadius(DesignConstant.cornerRadiusSm)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    )
+                    .background(Color.black.opacity(0.3))
+                    .cornerRadius(12)
                 }
                 .padding()
                 .glassPanel()
                 
                 // Layer Norms
-                VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("LAYER NORMS (AVG WEIGHT)")
                         .font(.system(.caption, design: .monospaced))
                         .bold()

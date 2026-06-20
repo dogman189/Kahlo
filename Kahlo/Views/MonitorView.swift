@@ -6,7 +6,7 @@ struct MonitorView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: DesignConstant.spacingLg) {
+            VStack(spacing: 20) {
                 // Header status
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -20,6 +20,7 @@ struct MonitorView: View {
                     }
                     Spacer()
                     
+                    // Status Pill
                     HStack(spacing: 6) {
                         if engine.isRunning {
                             PulsingDot(color: .green)
@@ -33,7 +34,7 @@ struct MonitorView: View {
                             .bold()
                             .foregroundColor(engine.isRunning ? .green : .red)
                     }
-                    .padding(.horizontal, DesignConstant.paddingSm)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(engine.isRunning ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                     .cornerRadius(20)
@@ -71,9 +72,9 @@ struct MonitorView: View {
                         }
                         Spacer()
                         
+                        // Action buttons
                         if !engine.isRunning {
                             Button(action: {
-                                HapticManager.medium()
                                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                                     engine.start()
                                 }
@@ -88,12 +89,11 @@ struct MonitorView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 12)
                                 .background(Color.green)
-                                .cornerRadius(DesignConstant.cornerRadiusSm)
+                                .cornerRadius(12)
                             }
                             .buttonStyle(ScaleButtonStyle())
                         } else {
                             Button(action: {
-                                HapticManager.medium()
                                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                                     engine.stop()
                                 }
@@ -108,7 +108,7 @@ struct MonitorView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 12)
                                 .background(Color.red)
-                                .cornerRadius(DesignConstant.cornerRadiusSm)
+                                .cornerRadius(12)
                             }
                             .buttonStyle(ScaleButtonStyle())
                         }
@@ -120,13 +120,18 @@ struct MonitorView: View {
                             .frame(height: 180)
                             .padding(.vertical, 10)
                     }
-                    .glassPanel()
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                    )
                 }
                 .padding()
                 .glassPanel()
                 
                 // Indicators Panel (Bollinger, RSI, Bandwidth)
-                VStack(spacing: DesignConstant.spacingMd) {
+                VStack(spacing: 16) {
                     Text("TECHNICAL INDICATORS")
                         .font(.system(.caption, design: .monospaced))
                         .bold()
@@ -147,29 +152,26 @@ struct MonitorView: View {
                             }
                         }
                         
+                        // Bollinger gauge
                         GeometryReader { meterGeo in
                             ZStack(alignment: .leading) {
-                                // Background gradient bar
+                                // Background Bar
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Color.red.opacity(0.2), Color.purple.opacity(0.1), Color.green.opacity(0.2)],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
+                                    .fill(Color.purple.opacity(0.1))
                                     .frame(height: 8)
                                 
+                                // Lower / Upper bounds indicator
                                 Text("LOWER")
                                     .font(.system(size: 7, weight: .bold, design: .monospaced))
                                     .foregroundColor(.purple)
-                                    .offset(y: 14)
+                                    .offset(y: 12)
                                 
                                 Text("UPPER")
                                     .font(.system(size: 7, weight: .bold, design: .monospaced))
                                     .foregroundColor(.purple)
-                                    .offset(x: meterGeo.size.width - 32, y: 14)
+                                    .offset(x: meterGeo.size.width - 32, y: 12)
                                 
+                                // Needle
                                 if let upper = engine.upper, let lower = engine.lower {
                                     let range = upper - lower
                                     let pct = range > 0 ? max(0.0, min(1.0, (engine.price - lower) / range)) : 0.5
@@ -178,12 +180,12 @@ struct MonitorView: View {
                                         .fill(Color.purple)
                                         .frame(width: 14, height: 14)
                                         .offset(x: meterGeo.size.width * CGFloat(pct) - 7, y: -3)
-                                        .shadow(color: .purple.opacity(0.6), radius: 4)
+                                        .shadow(color: .purple, radius: 2)
                                         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: pct)
                                 }
                             }
                         }
-                        .frame(height: 28)
+                        .frame(height: 24)
                     }
                     .padding(.bottom, 6)
                     
@@ -191,6 +193,7 @@ struct MonitorView: View {
                     
                     // RSI and Bandwidth Squeeze
                     HStack(spacing: 20) {
+                        // RSI Fill Indicator
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("RSI (\(engine.rsiPeriod))")
@@ -205,6 +208,7 @@ struct MonitorView: View {
                                 }
                             }
                             
+                            // RSI Progress Bar
                             GeometryReader { progressGeo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 3)
@@ -224,6 +228,7 @@ struct MonitorView: View {
                         
                         Divider().background(Color.white.opacity(0.05))
                         
+                        // Bandwidth squeeze
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Bollinger Bandwidth")
                                 .font(.caption)
@@ -258,7 +263,7 @@ struct MonitorView: View {
                 .padding()
                 .glassPanel()
                 
-                // Logging Console
+                // Logging Console / Terminal
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("SYSTEM LOGS")
@@ -299,13 +304,8 @@ struct MonitorView: View {
                         }
                         .frame(height: 140)
                         .padding(10)
-                        .background(.ultraThinMaterial)
-                        .background(Color.black.opacity(0.55))
+                        .background(Color.black.opacity(0.5))
                         .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                        )
                     }
                 }
                 .padding()

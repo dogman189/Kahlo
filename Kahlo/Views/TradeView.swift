@@ -48,21 +48,38 @@ struct TradeView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: DesignConstant.spacingLg) {
+            VStack(spacing: 20) {
+
+                // MARK: - Header
                 headerSection
+
+                // MARK: - Side Selector (BUY / SELL)
                 sideSelector
+
+                // MARK: - Symbol Picker
                 symbolPicker
+
+                // MARK: - Price Display
                 priceDisplay
+
+                // MARK: - Amount Input
                 amountSection
+
+                // MARK: - Quick Percentage Buttons
                 quickPercentageButtons
+
+                // MARK: - Order Summary
                 orderSummary
+
+                // MARK: - Execute Button
                 executeButton
 
+                // MARK: - Recent Manual Trades
                 if !recentManualTrades.isEmpty {
                     recentTradesSection
                 }
             }
-            .padding(.horizontal, DesignConstant.paddingMd)
+            .padding(.horizontal, 16)
             .padding(.bottom, 32)
         }
         .background(GlassBackgroundView())
@@ -120,6 +137,7 @@ struct TradeView: View {
                     .foregroundColor(.gray)
             }
             Spacer()
+            // Balance pill + Add button
             HStack(spacing: 8) {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("AVAILABLE")
@@ -131,12 +149,12 @@ struct TradeView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                 }
-                .padding(.horizontal, DesignConstant.paddingSm)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color.cyan.opacity(0.08))
-                .cornerRadius(DesignConstant.cornerRadiusSm)
+                .cornerRadius(10)
                 .overlay(
-                    RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
+                    RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.cyan.opacity(0.15), lineWidth: 1)
                 )
 
@@ -162,47 +180,44 @@ struct TradeView: View {
         .padding(.top, 10)
     }
 
-    // MARK: - Side Selector (Sliding Pill)
+    // MARK: - Side Selector
 
     private var sideSelector: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.05))
-                    .frame(height: 44)
-
-                Capsule()
-                    .fill(selectedSide.color.opacity(0.85))
-                    .frame(width: geo.size.width / 2 - 4, height: 36)
-                    .offset(x: selectedSide == .buy ? 4 : geo.size.width / 2)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectedSide)
-
-                HStack(spacing: 0) {
-                    ForEach(TradeSide.allCases, id: \.self) { side in
-                        Button(action: {
-                            HapticManager.selection()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                selectedSide = side
-                                amountText = ""
-                                selectedPercentage = 0
-                            }
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: side.icon)
-                                    .font(.system(size: 14, weight: .bold))
-                                Text(side.rawValue)
-                                    .font(.system(size: 15, weight: .bold, design: .monospaced))
-                            }
-                            .foregroundColor(selectedSide == side ? .white : side.color.opacity(0.6))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                        }
-                        .buttonStyle(PlainButtonStyle())
+        HStack(spacing: 0) {
+            ForEach(TradeSide.allCases, id: \.self) { side in
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedSide = side
+                        amountText = ""
+                        selectedPercentage = 0
                     }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: side.icon)
+                            .font(.system(size: 14, weight: .bold))
+                        Text(side.rawValue)
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(selectedSide == side ? .white : side.color.opacity(0.6))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        selectedSide == side
+                            ? side.color.opacity(0.85)
+                            : Color.clear
+                    )
+                    .cornerRadius(12)
                 }
+                .buttonStyle(ScaleButtonStyle())
             }
         }
-        .frame(height: 44)
+        .padding(4)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
 
     // MARK: - Symbol Picker
@@ -217,7 +232,6 @@ struct TradeView: View {
                 HStack(spacing: 8) {
                     ForEach(engine.availableSymbols, id: \.self) { sym in
                         Button(action: {
-                            HapticManager.selection()
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 selectedSymbol = sym
                                 amountText = ""
@@ -240,9 +254,9 @@ struct TradeView: View {
                                     ? selectedSide.color.opacity(0.7)
                                     : Color.white.opacity(0.03)
                             )
-                            .cornerRadius(DesignConstant.cornerRadiusSm)
+                            .cornerRadius(10)
                             .overlay(
-                                RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
+                                RoundedRectangle(cornerRadius: 10)
                                     .stroke(
                                         selectedSymbol == sym
                                             ? selectedSide.color.opacity(0.5)
@@ -322,6 +336,7 @@ struct TradeView: View {
             }
 
             HStack(spacing: 12) {
+                // Currency / Coin icon
                 ZStack {
                     Circle()
                         .fill(selectedSide.color.opacity(0.15))
@@ -357,14 +372,14 @@ struct TradeView: View {
                 }
             }
             .padding(14)
-            .background(.ultraThinMaterial)
-            .background(Color.black.opacity(0.25))
-            .cornerRadius(DesignConstant.cornerRadiusSm)
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(12)
             .overlay(
-                RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
-                    .stroke(selectedSide.color.opacity(amountText.isEmpty ? 0.15 : 0.35), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selectedSide.color.opacity(amountText.isEmpty ? 0.1 : 0.35), lineWidth: 1)
             )
 
+            // Max available hint
             if selectedSide == .buy {
                 Text("Max: \(engine.selectedCurrency.format(engine.portfolio.usd))")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -387,7 +402,6 @@ struct TradeView: View {
         return HStack(spacing: 8) {
             ForEach(percentages, id: \.self) { pct in
                 Button(action: {
-                    HapticManager.selection()
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
                         selectedPercentage = pct
                         applyPercentage(pct)
@@ -479,7 +493,7 @@ struct TradeView: View {
                     .foregroundColor(.cyan)
             }
         }
-        .padding(DesignConstant.paddingMd)
+        .padding(16)
         .glassPanel()
     }
 
@@ -497,10 +511,7 @@ struct TradeView: View {
             }
         }()
 
-        return Button(action: {
-            HapticManager.medium()
-            executeTrade()
-        }) {
+        return Button(action: executeTrade) {
             HStack(spacing: 8) {
                 Image(systemName: selectedSide == .buy ? "cart.fill.badge.plus" : "cart.fill.badge.minus")
                     .font(.system(size: 16, weight: .bold))
@@ -531,13 +542,14 @@ struct TradeView: View {
     // MARK: - Recent Trades
 
     private var recentTradesSection: some View {
-        VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("RECENT MANUAL TRADES")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundColor(.gray)
 
             ForEach(recentManualTrades.reversed()) { trade in
                 HStack(spacing: 10) {
+                    // Side indicator
                     Circle()
                         .fill(trade.side == "BUY" ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
@@ -563,9 +575,9 @@ struct TradeView: View {
                     }
                 }
                 .padding(.vertical, 8)
-                .padding(.horizontal, DesignConstant.paddingSm)
+                .padding(.horizontal, 12)
                 .background(Color.white.opacity(0.015))
-                .cornerRadius(DesignConstant.cornerRadiusSm)
+                .cornerRadius(10)
             }
         }
         .padding(14)
@@ -578,7 +590,7 @@ struct TradeView: View {
         Group {
             if showConfirmation {
                 ZStack {
-                    Color.black.opacity(0.5)
+                    Color.black.opacity(0.4)
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -599,7 +611,7 @@ struct TradeView: View {
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, DesignConstant.paddingMd)
+                            .padding(.horizontal, 16)
 
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -612,20 +624,20 @@ struct TradeView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                                 .background(Color.cyan)
-                                .cornerRadius(DesignConstant.cornerRadiusSm)
+                                .cornerRadius(10)
                         }
                         .padding(.horizontal, 20)
                     }
-                    .padding(DesignConstant.paddingLg)
+                    .padding(24)
                     .frame(maxWidth: 320)
                     .background(.ultraThinMaterial)
                     .background(Color(red: 17/255, green: 24/255, blue: 39/255).opacity(0.85))
-                    .cornerRadius(DesignConstant.cornerRadiusLg)
+                    .cornerRadius(20)
                     .overlay(
-                        RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusLg)
+                        RoundedRectangle(cornerRadius: 20)
                             .stroke(Color.white.opacity(0.1), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 10)
+                    .shadow(color: .black.opacity(0.5), radius: 30)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: showConfirmation)
@@ -673,6 +685,7 @@ struct TradeView: View {
             ))
         }
 
+        // Keep only last 10 trades
         if recentManualTrades.count > 10 {
             recentManualTrades.removeFirst()
         }

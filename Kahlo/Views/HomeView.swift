@@ -35,6 +35,7 @@ struct HomeView: View {
         nonmutating set { engine.coins = newValue }
     }
     
+    // Default base data to initialize
     private let initialCoins = [
         CoinModel(symbol: "BTC", name: "Bitcoin", price: 68450.0, change24h: 3.45, marketCap: 1340.5, volume24h: 28400.0, sparkline: [67100, 67300, 66800, 67200, 67900, 68100, 68450]),
         CoinModel(symbol: "ETH", name: "Ethereum", price: 3520.0, change24h: 1.88, marketCap: 422.3, volume24h: 14200.0, sparkline: [3480, 3490, 3460, 3510, 3505, 3495, 3520]),
@@ -48,14 +49,22 @@ struct HomeView: View {
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: DesignConstant.spacingLg) {
+                VStack(spacing: 20) {
+                    
+                    // MARK: - Market Stats Overview
                     marketSummaryCardsSection
+                    
+                    // MARK: - Search Field
                     searchBarSection
+
+                    // MARK: - Filter Pills
                     filterPillsSection
+                    
+                    // MARK: - Coins List
                     coinsListSection
                 }
-                .padding(.horizontal, DesignConstant.paddingMd)
-                .padding(.bottom, DesignConstant.paddingLg)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
             .background(GlassBackgroundView())
             .navigationTitle("Markets")
@@ -70,7 +79,6 @@ struct HomeView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        HapticManager.light()
                         withAnimation(.spring()) {
                             updatePricesFromEngine()
                         }
@@ -145,7 +153,6 @@ struct HomeView: View {
             HStack(spacing: 8) {
                 ForEach(MarketFilter.allCases, id: \.self) { filter in
                     Button(action: {
-                        HapticManager.selection()
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                             selectedFilter = filter
                         }
@@ -160,9 +167,9 @@ struct HomeView: View {
                                     ? Color.cyan.opacity(0.85)
                                     : Color.white.opacity(0.04)
                             )
-                            .cornerRadius(DesignConstant.cornerRadiusSm)
+                            .cornerRadius(10)
                             .overlay(
-                                RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
+                                RoundedRectangle(cornerRadius: 10)
                                     .stroke(
                                         selectedFilter == filter ? Color.cyan.opacity(0.5) : Color.white.opacity(0.05),
                                         lineWidth: 1
@@ -199,6 +206,7 @@ struct HomeView: View {
         updatePrices()
     }
 
+    /// Syncs the local coins array using a full fetch to get all metadata.
     private func syncCoinsFromEngine() {
         updatePrices()
     }
@@ -218,6 +226,7 @@ struct HomeView: View {
                             }
                             spark.append(rc.price)
                         } else {
+                            // Seed a realistic sparkline for new coins
                             for _ in 1...6 {
                                 let variation = Double.random(in: -0.01...0.01)
                                 spark.insert(rc.price * (1.0 + variation), at: 0)
@@ -271,6 +280,8 @@ struct HomeView: View {
     
     // MARK: - View Components
 
+    // MARK: - Summary Card Helpers
+
     private var topGainer: CoinModel? {
         coins.max(by: { $0.change24h < $1.change24h })
     }
@@ -300,8 +311,9 @@ struct HomeView: View {
     private var marketSummaryCardsSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
+
+                // Top Gainer
                 Button(action: {
-                    HapticManager.medium()
                     if let coin = topGainer {
                         activeSheet = .coin(coin)
                     }
@@ -310,7 +322,6 @@ struct HomeView: View {
                         label: "TOP GAINER",
                         icon: "arrow.up.right",
                         iconColor: .positive,
-                        glowColor: .positive,
                         primary: topGainer?.symbol ?? "--",
                         secondary: topGainer.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
                         secondaryColor: .positive
@@ -319,8 +330,8 @@ struct HomeView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .disabled(topGainer == nil)
 
+                // Top Loser
                 Button(action: {
-                    HapticManager.medium()
                     if let coin = topLoser {
                         activeSheet = .coin(coin)
                     }
@@ -329,7 +340,6 @@ struct HomeView: View {
                         label: "TOP LOSER",
                         icon: "arrow.down.right",
                         iconColor: .negative,
-                        glowColor: .negative,
                         primary: topLoser?.symbol ?? "--",
                         secondary: topLoser.map { String(format: "%+.2f%%", $0.change24h) } ?? "--",
                         secondaryColor: .negative
@@ -338,15 +348,14 @@ struct HomeView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .disabled(topLoser == nil)
 
+                // Gainers / Losers ratio (Sentiment)
                 Button(action: {
-                    HapticManager.medium()
                     activeSheet = .sentiment
                 }) {
                     MarketSummaryCard(
                         label: "SENTIMENT",
                         icon: "chart.bar.fill",
                         iconColor: gainersCount >= losersCount ? .positive : .negative,
-                        glowColor: gainersCount >= losersCount ? .positive : .negative,
                         primary: "\(gainersCount)↑  \(losersCount)↓",
                         secondary: coins.isEmpty ? "" : String(format: "%.0f%% up", Double(gainersCount) / Double(coins.count) * 100),
                         secondaryColor: gainersCount >= losersCount ? .positive : .negative
@@ -354,15 +363,14 @@ struct HomeView: View {
                 }
                 .buttonStyle(ScaleButtonStyle())
 
+                // Total 24h Volume
                 Button(action: {
-                    HapticManager.medium()
                     activeSheet = .volume
                 }) {
                     MarketSummaryCard(
                         label: "24H VOLUME",
                         icon: "dollarsign.circle",
                         iconColor: .accentTeal,
-                        glowColor: .accentTeal,
                         primary: String(format: "$%.1fB", total24hVolume / 1000),
                         secondary: String(format: "MCap $%.1fT", totalMarketCap / 1000),
                         secondaryColor: .mutedLabel
@@ -371,7 +379,7 @@ struct HomeView: View {
                 .buttonStyle(ScaleButtonStyle())
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
         .padding(.top, 8)
     }
@@ -387,35 +395,30 @@ struct HomeView: View {
                 .autocorrectionDisabled()
                 .autocapitalization(.allCharacters)
             if !searchQuery.isEmpty {
-                Button(action: {
-                    HapticManager.light()
-                    searchQuery = ""
-                }) {
+                Button(action: { searchQuery = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.gray)
                 }
             }
         }
-        .padding(.horizontal, DesignConstant.paddingSm)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .background(Color.black.opacity(0.25))
-        .cornerRadius(DesignConstant.cornerRadiusMd)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(12)
         .overlay(
-            RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusMd)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.04), lineWidth: 1)
         )
-        .shadowSm()
     }
     
     private var coinsListSection: some View {
         VStack(spacing: 8) {
             ForEach(filteredCoins) { coin in
                 Button(action: {
-                    HapticManager.light()
                     activeSheet = .coin(coin)
                 }) {
                     HStack(spacing: 0) {
+                        // Coin Icon & Info
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 8) {
                                 Text(coin.symbol)
@@ -442,12 +445,12 @@ struct HomeView: View {
                         
                         // Sparkline View
                         MiniSparkline(data: coin.sparkline, isPositive: coin.change24h >= 0)
-                            .frame(width: 52, height: 24)
+                            .frame(height: 24)
                             .padding(.horizontal, 10)
                         
                         Spacer()
                         
-                        // Price & Change
+                        // Price & Valuation info
                         VStack(alignment: .trailing, spacing: 3) {
                             Text(engine.selectedCurrency.format(coin.price, decimalPlaces: coin.price >= 1.0 ? 2 : 4))
                                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
@@ -461,11 +464,11 @@ struct HomeView: View {
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 14)
-                    .background(Color.white.opacity(0.02))
-                    .cornerRadius(DesignConstant.cornerRadiusMd)
+                    .background(Color.white.opacity(0.015))
+                    .cornerRadius(12)
                     .overlay(
-                        RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusMd)
-                            .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.03), lineWidth: 0.5)
                     )
                 }
                 .buttonStyle(ScaleButtonStyle())
@@ -486,6 +489,7 @@ struct MiniSparkline: View {
                 EmptyView()
             } else {
                 ZStack {
+                    // Gradient Fill Area
                     Path { path in
                         let minVal = data.min() ?? 0
                         let maxVal = data.max() ?? 1
@@ -507,7 +511,7 @@ struct MiniSparkline: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                isPositive ? Color.green.opacity(0.12) : Color.red.opacity(0.12),
+                                isPositive ? Color.green.opacity(0.08) : Color.red.opacity(0.08),
                                 Color.clear
                             ],
                             startPoint: .top,
@@ -515,6 +519,7 @@ struct MiniSparkline: View {
                         )
                     )
                     
+                    // Fine stroke line
                     Path { path in
                         let minVal = data.min() ?? 0
                         let maxVal = data.max() ?? 1
@@ -532,60 +537,11 @@ struct MiniSparkline: View {
                     }
                     .stroke(
                         isPositive ? Color.green.opacity(0.8) : Color.red.opacity(0.8),
-                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round)
                     )
                 }
             }
         }
-    }
-}
-
-// MARK: - Market Summary Card
-
-struct MarketSummaryCard: View {
-    let label: String
-    let icon: String
-    let iconColor: Color
-    var glowColor: Color = .clear
-    let primary: String
-    let secondary: String
-    var secondaryColor: Color = .mutedLabel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(iconColor)
-                Text(label)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.mutedLabel)
-                    .tracking(0.8)
-            }
-
-            Text(primary)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            if !secondary.isEmpty {
-                Text(secondary)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(secondaryColor)
-            }
-        }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .frame(width: 140, alignment: .leading)
-        .background(.ultraThinMaterial)
-        .background(Color.white.opacity(0.025))
-        .cornerRadius(DesignConstant.cornerRadiusMd)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusMd)
-                .stroke(iconColor.opacity(0.2), lineWidth: 0.5)
-        )
-        .shadow(color: glowColor.opacity(0.12), radius: 12, x: 0, y: 4)
     }
 }
 
@@ -603,7 +559,7 @@ struct CoinDetailView: View {
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: DesignConstant.spacingLg) {
+                VStack(spacing: 24) {
                     
                     // Header Price Section
                     VStack(spacing: 6) {
@@ -641,8 +597,13 @@ struct CoinDetailView: View {
                         MetricRow(title: "Your Holdings", value: "\(String(format: "%.4f", holdings)) \(coin.symbol)")
                         MetricRow(title: "Holdings Value", value: engine.selectedCurrency.format(valuation), valueColor: .cyan)
                     }
-                    .padding(DesignConstant.paddingMd)
-                    .glassPanel()
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
                     
                     // Price Alerts Section
                     VStack(alignment: .leading, spacing: 14) {
@@ -733,11 +694,11 @@ struct CoinDetailView: View {
                                     .font(.system(size: 14, design: .monospaced))
                                     .textFieldStyle(.plain)
                                     .padding(8)
-                                    .background(Color.black.opacity(0.25))
-                                    .cornerRadius(DesignConstant.cornerRadiusSm)
+                                    .background(Color.black.opacity(0.2))
+                                    .cornerRadius(6)
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
-                                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
                                     )
                                 
                                 Button(action: {
@@ -759,21 +720,26 @@ struct CoinDetailView: View {
                                         .padding(.horizontal, 14)
                                         .padding(.vertical, 8)
                                         .background(Color.cyan)
-                                        .cornerRadius(DesignConstant.cornerRadiusSm)
+                                        .cornerRadius(6)
                                 }
                                 .disabled(alertValueText.isEmpty)
                             }
                         }
-                        .padding(DesignConstant.paddingSm)
-                        .background(Color.white.opacity(0.015))
-                        .cornerRadius(DesignConstant.cornerRadiusSm)
+                        .padding(10)
+                        .background(Color.white.opacity(0.01))
+                        .cornerRadius(10)
                         .overlay(
-                            RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
-                                .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.03), lineWidth: 0.5)
                         )
                     }
-                    .padding(DesignConstant.paddingMd)
-                    .glassPanel()
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
 
                     // Action controls
                     VStack {
@@ -788,14 +754,13 @@ struct CoinDetailView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background(Color.green.opacity(0.08))
-                            .cornerRadius(DesignConstant.cornerRadiusSm)
+                            .cornerRadius(12)
                             .overlay(
-                                RoundedRectangle(cornerRadius: DesignConstant.cornerRadiusSm)
+                                RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.green.opacity(0.2), lineWidth: 1)
                             )
                         } else {
                             Button(action: {
-                                HapticManager.medium()
                                 onSelectTrading(coin)
                                 dismiss()
                             }) {
@@ -805,13 +770,13 @@ struct CoinDetailView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
                                     .background(Color.cyan)
-                                    .cornerRadius(DesignConstant.cornerRadiusSm)
+                                    .cornerRadius(12)
                             }
                             .buttonStyle(ScaleButtonStyle())
                         }
                     }
                 }
-                .padding(.horizontal, DesignConstant.paddingMd)
+                .padding(.horizontal, 16)
             }
             .background(GlassBackgroundView())
             .navigationBarTitleDisplayMode(.inline)
@@ -846,6 +811,57 @@ struct MetricRow: View {
     }
 }
 
+// MARK: - Market Summary Card
+
+struct MarketSummaryCard: View {
+    let label: String
+    let icon: String
+    let iconColor: Color
+    let primary: String
+    let secondary: String
+    var secondaryColor: Color = .mutedLabel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Label + icon row
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(iconColor)
+                Text(label)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(.mutedLabel)
+                    .tracking(0.8)
+            }
+
+            // Primary value
+            Text(primary)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            // Secondary value / subtitle
+            if !secondary.isEmpty {
+                Text(secondary)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(secondaryColor)
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(width: 140, alignment: .leading)
+        .background(.ultraThinMaterial)
+        .background(Color.white.opacity(0.025))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(iconColor.opacity(0.15), lineWidth: 0.5)
+        )
+        .shadow(color: iconColor.opacity(0.08), radius: 10, x: 0, y: 4)
+    }
+}
+
 // MARK: - Sentiment Detail View
 struct SentimentDetailView: View {
     let coins: [CoinModel]
@@ -866,7 +882,8 @@ struct SentimentDetailView: View {
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: DesignConstant.spacingLg) {
+                VStack(spacing: 24) {
+                    // Title section
                     VStack(spacing: 8) {
                         Text("MARKET SENTIMENT")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -880,10 +897,11 @@ struct SentimentDetailView: View {
                             .font(.system(size: 12))
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, DesignConstant.paddingLg)
+                            .padding(.horizontal, 24)
                     }
                     .padding(.top, 20)
                     
+                    // Visual progress bar
                     VStack(spacing: 8) {
                         HStack {
                             Text("\(gainers.count) Gainers")
@@ -911,10 +929,16 @@ struct SentimentDetailView: View {
                             .foregroundColor(.gray)
                             .padding(.top, 4)
                     }
-                    .padding(DesignConstant.paddingMd)
-                    .glassPanel()
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
                     
-                    VStack(alignment: .leading, spacing: DesignConstant.spacingMd) {
+                    // Lists of Gainers & Losers
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("TOP GAINERS")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.green)
@@ -937,12 +961,12 @@ struct SentimentDetailView: View {
                                 }
                             }
                         }
-                        .padding(DesignConstant.paddingSm)
+                        .padding(12)
                         .background(Color.green.opacity(0.03))
-                        .cornerRadius(DesignConstant.cornerRadiusSm)
+                        .cornerRadius(12)
                     }
                     
-                    VStack(alignment: .leading, spacing: DesignConstant.spacingMd) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("TOP LOSERS")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.red)
@@ -965,12 +989,12 @@ struct SentimentDetailView: View {
                                 }
                             }
                         }
-                        .padding(DesignConstant.paddingSm)
+                        .padding(12)
                         .background(Color.red.opacity(0.03))
-                        .cornerRadius(DesignConstant.cornerRadiusSm)
+                        .cornerRadius(12)
                     }
                 }
-                .padding(.horizontal, DesignConstant.paddingMd)
+                .padding(.horizontal, 16)
             }
             .background(GlassBackgroundView())
             .navigationBarTitleDisplayMode(.inline)
@@ -1008,7 +1032,7 @@ struct VolumeDetailView: View {
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: DesignConstant.spacingLg) {
+                VStack(spacing: 24) {
                     VStack(spacing: 8) {
                         Text("MARKET METRICS")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -1024,15 +1048,22 @@ struct VolumeDetailView: View {
                     }
                     .padding(.top, 20)
                     
+                    // Stats card
                     VStack(spacing: 14) {
                         MetricRow(title: "Total Market Capitalization", value: String(format: "$%.2fT", totalMarketCap / 1000.0), valueColor: .primary)
                         MetricRow(title: "Total 24h Trading Volume", value: String(format: "$%.2fB", totalVolume / 1000.0), valueColor: .cyan)
                         MetricRow(title: "Assets Tracked", value: "\(coins.count)", valueColor: .primary)
                     }
-                    .padding(DesignConstant.paddingMd)
-                    .glassPanel()
+                    .padding(16)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                    )
                     
-                    VStack(alignment: .leading, spacing: DesignConstant.spacingSm) {
+                    // List of assets by volume
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("VOLUME BREAKDOWN")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.gray)
@@ -1063,10 +1094,15 @@ struct VolumeDetailView: View {
                             }
                         }
                         .padding(14)
-                        .glassPanel()
+                        .background(Color.white.opacity(0.015))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.03), lineWidth: 0.5)
+                        )
                     }
                 }
-                .padding(.horizontal, DesignConstant.paddingMd)
+                .padding(.horizontal, 16)
             }
             .background(GlassBackgroundView())
             .navigationBarTitleDisplayMode(.inline)
@@ -1082,3 +1118,5 @@ struct VolumeDetailView: View {
         }
     }
 }
+
+
