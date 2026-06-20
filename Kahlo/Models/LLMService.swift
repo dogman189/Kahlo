@@ -48,8 +48,12 @@ public protocol LLMInferenceEngine {
 
 actor TinySwiftEngine: LLMInferenceEngine {
     func generate(prompt: String, config: LLMModelConfig) async throws -> String {
-        let data = parseMarketData(from: prompt)
-        return buildAnalysis(data: data)
+        if prompt.hasPrefix("Market Data for") {
+            let data = parseMarketData(from: prompt)
+            return buildAnalysis(data: data)
+        } else {
+            return chatResponse(for: prompt)
+        }
     }
 
     private struct MarketData {
@@ -215,6 +219,194 @@ actor TinySwiftEngine: LLMInferenceEngine {
             KEY RISKS:
             \(risksList.map { "• \($0)" }.joined(separator: "\n"))
             """
+    }
+
+    // MARK: - Chat
+
+    private func chatResponse(for prompt: String) -> String {
+        let userMsg: String
+        var symbol = "BTC"
+        var price: Double?
+        var rsi: Double?
+        var prediction: Double?
+        var accuracy: Double?
+        var portfolioUSD: Double?
+        var bbPos: String?
+
+        if let range = prompt.range(of: "[USER MESSAGE]") {
+            userMsg = String(prompt[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let ctx = String(prompt[..<range.lowerBound])
+            for line in ctx.components(separatedBy: "\n") {
+                let t = line.trimmingCharacters(in: .whitespaces)
+                if t.hasPrefix("Symbol:") { symbol = String(t.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+                if t.hasPrefix("Price:") {
+                    let v = t.replacingOccurrences(of: #"[^0-9.]"#, with: "", options: .regularExpression)
+                    price = Double(v)
+                }
+                if t.hasPrefix("RSI:") {
+                    let v = t.replacingOccurrences(of: #"[^0-9.]"#, with: "", options: .regularExpression)
+                    rsi = Double(v)
+                }
+                if t.hasPrefix("Prediction:") {
+                    let v = t.replacingOccurrences(of: #"[^0-9.\-]"#, with: "", options: .regularExpression)
+                    prediction = Double(v)
+                }
+                if t.hasPrefix("Accuracy:") {
+                    let v = t.replacingOccurrences(of: #"[^0-9.]"#, with: "", options: .regularExpression)
+                    accuracy = Double(v)
+                }
+                if t.hasPrefix("Portfolio USD:") {
+                    let v = t.replacingOccurrences(of: #"[^0-9.]"#, with: "", options: .regularExpression)
+                    portfolioUSD = Double(v)
+                }
+                if t.hasPrefix("BB Position:") {
+                    bbPos = String(t.dropFirst(13)).trimmingCharacters(in: .whitespaces)
+                }
+            }
+        } else {
+            userMsg = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let lower = userMsg.lowercased()
+        let greet = #"^(hello|hi\b|hey|howdy|sup|good morning|good evening|yo)\b"#
+        let thanks = #"^(thanks|thank you|appreciate it|thx)\b"#
+
+        // Greetings
+        if lower.range(of: greet, options: .regularExpression) != nil {
+            let greetings = [
+                "Hey there! I'm Kahlo AI. I can help you analyze the crypto market, check technical indicators, or explain trading concepts. What's on your mind?",
+                "Hello! Ready to dive into the markets? Ask me about prices, indicators, or strategies.",
+                "Hi! I'm your on-device crypto analyst. No data leaves your device. How can I help?",
+            ]
+            return greetings.randomElement()!
+        }
+
+        // Thanks
+        if lower.range(of: thanks, options: .regularExpression) != nil {
+            return "You're welcome! Let me know if you have any other questions about the markets."
+        }
+
+        // Price queries
+        if lower.contains("price") || lower.contains("how much") || lower.contains("worth") || lower.contains("value") || lower.contains("trading at") {
+            if let p = price {
+                let trends = ["is currently trading at", "stands at", "is valued at"]
+                return "\(symbol) \(trends.randomElement()!) **$\(String(format: "%.2f", p))**."
+            }
+            return "I don't have real-time price data for that asset right now. You can check the Markets tab for current prices, or enable the trading engine to track a specific symbol."
+        }
+
+        // RSI queries
+        if lower.contains("rsi") || lower.contains("relative strength") {
+            if let r = rsi {
+                let status: String
+                if r > 70 { status = "overbought (above 70) — this could signal a potential pullback or trend reversal." }
+                else if r < 30 { status = "oversold (below 30) — this could indicate a potential bounce or reversal." }
+                else { status = "neutral territory between 30 and 70 — no extreme conditions detected." }
+                return "The current RSI(14) for \(symbol) is **\(String(format: "%.1f", r))**, which is \(status)"
+            }
+            return "RSI data isn't available right now. Make sure the trading engine is running in the Trade tab to compute indicators."
+        }
+
+        // Bollinger Band queries
+        if lower.contains("bollinger") || lower.contains("bands") || lower.contains("bb") {
+            if let pos = bbPos {
+                return "\(symbol) is currently positioned **\(pos)**. Bollinger Bands measure volatility — prices touching the upper band suggest strength, while the lower band may indicate oversold conditions."
+            }
+            return "Bollinger Band data isn't available right now. Start the trading engine to compute real-time bands."
+        }
+
+        // Prediction / forecast queries
+        if lower.contains("predict") || lower.contains("forecast") || lower.contains("neural") || lower.contains("nn") || lower.contains("outlook") {
+            if let pred = prediction, let acc = accuracy {
+                let direction = pred > 0.05 ? "upward" : (pred < -0.05 ? "downward" : "neutral (no strong direction)")
+                let dirEmoji = pred > 0.05 ? "📈" : (pred < -0.05 ? "📉" : "➡️")
+                return "The neural network forecast for \(symbol) is **\(String(format: "%+.4f", pred))** (\(direction)) \(dirEmoji)\n\nThis prediction has a historical accuracy of **\(String(format: "%.0f%%", acc))**. Remember — past performance doesn't guarantee future results."
+            }
+            return "I don't have a neural network prediction available right now. The AI Brain tab shows the latest forecast once the engine is running."
+        }
+
+        // Market analysis
+        if lower.contains("analyze") || lower.contains("analysis") || lower.contains("market") || lower.contains("condition") {
+            if let p = price, let r = rsi {
+                var parts: [String] = []
+                parts.append("Here's a quick snapshot of **\(symbol)**:")
+                parts.append("• Price: **$\(String(format: "%.2f", p))**")
+                parts.append("• RSI(14): **\(String(format: "%.1f", r))** \(r > 70 ? "(overbought)" : r < 30 ? "(oversold)" : "(neutral)")")
+                if let pred = prediction {
+                    parts.append("• NN Forecast: **\(String(format: "%+.4f", pred))**")
+                }
+                if let pos = bbPos {
+                    parts.append("• Bollinger Position: **\(pos)**")
+                }
+                parts.append("")
+                parts.append("For a deeper AI-powered analysis, check the **AI Brain** tab with on-device LLM analysis enabled in Settings.")
+                return parts.joined(separator: "\n")
+            }
+            return "I need live market data to provide analysis. Start the trading engine in the Trade tab first, then ask me again!"
+        }
+
+        // Portfolio queries
+        if lower.contains("portfolio") || lower.contains("holdings") || lower.contains("balance") || (lower.contains("my ") && (lower.contains("money") || lower.contains("usd") || lower.contains("wallet"))) {
+            if let bal = portfolioUSD {
+                return "Your current USD balance is **$\(String(format: "%.2f", bal))**.\n\nYou can manage your portfolio and execute trades from the **Portfolio** and **Trade** tabs."
+            }
+            return "Portfolio data isn't available right now. Check the Portfolio tab for your latest balances."
+        }
+
+        // Help / capabilities
+        if lower.contains("help") || lower.contains("what can you") || lower.contains("capabilities") || lower.contains("commands") || lower.contains("how do you") {
+            return "I'm Kahlo AI, your on-device crypto assistant. I can help with:\n\n• **Market prices** — \"What's the price of BTC?\"\n• **Technical indicators** — \"What's the RSI?\" or \"Analyze the Bollinger Bands\"\n• **Forecasts** — \"What does the neural net predict?\"\n• **Portfolio** — \"How much USD do I have?\"\n• **Analysis** — \"Analyze the current market conditions\"\n• **Concepts** — \"What is RSI?\" or \"Explain Bollinger Bands\"\n• **Trading** — \"What's a good trading strategy?\"\n\nEverything runs **on-device** — no data is sent to external servers with the built-in Tiny Swift engine."
+        }
+
+        // Educational: What is RSI?
+        if lower.contains("what is rsi") || lower.contains("explain rsi") || lower.contains("rsi mean") || lower.contains("rsi indicator") {
+            return "**RSI (Relative Strength Index)** is a momentum oscillator that measures the speed and change of price movements on a scale of 0 to 100.\n\n• **Above 70** = Overbought — the asset may be due for a pullback\n• **Below 30** = Oversold — the asset may be due for a bounce\n• **Middle (30-70)** = Neutral — normal trading range\n\nKahlo uses a 14-period RSI by default, configurable in Settings."
+        }
+
+        // Educational: Bollinger Bands
+        if lower.contains("explain bollinger") || lower.contains("what are bollinger") || lower.contains("bollinger bands") || lower.contains("how do bollinger") {
+            return "**Bollinger Bands** consist of three lines:\n\n• **Middle Band**: A simple moving average (SMA)\n• **Upper Band**: SMA + (standard deviation × multiplier)\n• **Lower Band**: SMA - (standard deviation × multiplier)\n\nWhen bands widen, volatility is increasing. When they contract (a \"squeeze\"), a breakout may be coming. Prices touching the upper band suggest strength; the lower band suggests weakness.\n\nKahlo's default settings are a 20-period SMA with 2.0 standard deviations."
+        }
+
+        // Educational: Trading strategies
+        if lower.contains("strategy") || lower.contains("strategies") || lower.contains("how to trade") || lower.contains("trading tip") || lower.contains("risk management") {
+            let strategies = [
+                "**Dollar-Cost Averaging (DCA)**: Invest a fixed amount at regular intervals regardless of price. Reduces the impact of volatility.",
+                "**Trend Following**: Trade in the direction of the prevailing trend. Use moving averages to identify direction.",
+                "**Mean Reversion**: Buy when prices are below their historical average (oversold) and sell when above (overbought). Kahlo uses this with Bollinger Bands!",
+                "**Risk Management**: Never risk more than 1-2% of your portfolio on a single trade. Always use stop-losses and take-profits — Kahlo has these built-in.",
+            ]
+            return "Here are some common strategies:\n\n\(strategies.randomElement()!)\n\nYou can configure Kahlo's auto-trading parameters in **Settings** under Risk Management."
+        }
+
+        // About the app
+        if lower.contains("what is kahlo") || lower.contains("about this app") || lower.contains("what does kahlo do") || lower.contains("tell me about kahlo") {
+            return "**Kahlo** is a premium iOS cryptocurrency tracking and algorithmic trading simulator. Key features:\n\n• **Live Market Data** — Track 100+ coins with real-time prices\n• **Neural Network AI** — On-device predictions with a [8,16,8,4,1] architecture\n• **Technical Indicators** — Bollinger Bands, RSI, Bandwidth\n• **Auto-Trading Bot** — Configurable strategies with stop-loss & take-profit\n• **On-Device LLM** — Built-in AI analysis (no server needed)\n• **Portfolio Tracking** — Manual trading with P&L tracking\n• **Price Alerts** — Push notifications when targets are hit"
+        }
+
+        // Who built it
+        if lower.contains("who made") || lower.contains("who created") || lower.contains("developer") || lower.contains("creator") {
+            return "Kahlo was created by **Aanetra Vaidya**. It's built natively with SwiftUI and Combine, featuring a glassmorphic dark design."
+        }
+
+        // Generic crypto knowledge fallbacks
+        if lower.contains("crypto") || lower.contains("bitcoin") || lower.contains("ethereum") || lower.contains("blockchain") || lower.contains("defi") {
+            let facts = [
+                "Bitcoin (BTC) was created in 2009 by an anonymous entity known as Satoshi Nakamoto. It was the first decentralized cryptocurrency.",
+                "Ethereum (ETH) introduced smart contracts in 2015, enabling decentralized applications (dApps) beyond simple payments.",
+                "DeFi (Decentralized Finance) refers to financial services built on blockchain that operate without traditional intermediaries like banks.",
+                "Market capitalization (market cap) is calculated by multiplying the current price by the circulating supply. It's a key metric for comparing asset sizes.",
+            ]
+            return facts.randomElement()!
+        }
+
+        // Default fallback
+        let fallbacks = [
+            "That's an interesting question! I'm best equipped to help with cryptocurrency prices, technical indicators, trading strategies, and portfolio insights. Could you rephrase your question?",
+            "I'm not sure I understand — but I can help with market analysis, indicators, trading, and crypto concepts. Try asking about prices, RSI, Bollinger Bands, or your portfolio!",
+            "I'm still learning! I specialize in crypto market data, technical analysis, and trading strategies. Could you ask about something related to those topics?",
+        ]
+        return fallbacks.randomElement()!
     }
 }
 

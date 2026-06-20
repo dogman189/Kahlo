@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("showTabBrain") private var showTabBrain = true
     @AppStorage("showTabReport") private var showTabReport = true
     @AppStorage("showTabPortfolio") private var showTabPortfolio = true
+    @AppStorage("showTabChat") private var showTabChat = true
     @AppStorage("showTabSettings") private var showTabSettings = true
 
     @State private var showingModelManager = false
@@ -21,6 +22,7 @@ struct SettingsView: View {
         if showTabBrain { count += 1 }
         if showTabReport { count += 1 }
         if showTabPortfolio { count += 1 }
+        if showTabChat { count += 1 }
         if showTabSettings { count += 1 }
         return count
     }
@@ -307,6 +309,12 @@ struct SettingsView: View {
                     }
                     .tint(.cyan)
                     .disabled(activeTabCount <= 1 && showTabPortfolio)
+
+                    Toggle(isOn: $showTabChat) {
+                        Label("AI Chat", systemImage: "message.fill")
+                    }
+                    .tint(.cyan)
+                    .disabled(activeTabCount <= 1 && showTabChat)
                     
                     Toggle(isOn: $showTabSettings) {
                         Label("Settings (Always On)", systemImage: "gearshape.fill")

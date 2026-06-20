@@ -77,6 +77,7 @@ public final class TradingEngine: ObservableObject {
 
     // Local LLM
     @Published public var llmService = LLMService()
+    @Published public var chatService = ChatService()
     @Published public var useLLM: Bool = false
 
     // Historical tracking (max 50)
@@ -108,6 +109,7 @@ public final class TradingEngine: ObservableObject {
         // Load default config or saved values if preferred.
         // For simplicity, we initialize with defaults.
         loadConfig()
+        chatService = ChatService(llmService: llmService)
         startMarketRefreshTimer()
     }
 
